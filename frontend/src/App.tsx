@@ -3,22 +3,19 @@ import {
   ArrowRight,
   CalendarDays,
   ChevronRight,
-  CircleDollarSign,
   Clock3,
+  Club,
   Diamond,
   Gamepad2,
   LayoutDashboard,
   Menu,
-  ShieldCheck,
   Spade,
-  Ticket,
   Trophy,
-  Users,
   Wallet,
   X,
 } from 'lucide-react'
 
-type GameId = 'cheat' | 'tago'
+type GameId = 'cheat' | 'tago' | 'durak'
 type GameFilter = 'all' | GameId
 
 const games = [
@@ -28,10 +25,6 @@ const games = [
     eyebrow: '6-player bluffing',
     description: 'Make the claim. Read the table. Call the bluff.',
     image: '/images/cheat-table.jpg',
-    entry: '25 USDC',
-    prize: '148.50 USDC',
-    players: 4,
-    capacity: 6,
     starts: '18 min',
     accent: 'red',
   },
@@ -41,12 +34,17 @@ const games = [
     eyebrow: 'Rule of Pair',
     description: 'Build the pair. Count the point. Win the round.',
     image: '/images/tago-table.jpg',
-    entry: '40 USDC',
-    prize: '633.60 USDC',
-    players: 8,
-    capacity: 16,
     starts: '42 min',
     accent: 'blue',
+  },
+  {
+    id: 'durak' as const,
+    name: 'Durak',
+    eyebrow: 'Last card loses',
+    description: 'Play your hand and avoid being the last player holding cards.',
+    image: '/images/durak-table.jpg',
+    starts: '1 hr',
+    accent: 'green',
   },
 ]
 
@@ -107,19 +105,7 @@ function App() {
           <span>RARETABLE</span>
         </a>
 
-        <nav className="top-navigation" aria-label="Primary navigation">
-          <a className="is-active" href="#lobby">
-            Lobby
-          </a>
-          <a href="#games">Games</a>
-          <a href="#tournaments">Tournaments</a>
-        </nav>
-
         <div className="topbar-actions">
-          <span className="chain-status">
-            <span className="status-dot" aria-hidden="true" />
-            Live lobby
-          </span>
           <button className="wallet-button" type="button">
             <Wallet size={18} />
             <span>Connect wallet</span>
@@ -172,22 +158,12 @@ function App() {
                 TAGO
                 <span className="sidebar-count">1</span>
               </a>
+              <a href="#games" onClick={closeMobileMenu}>
+                <Club size={18} />
+                Durak
+                <span className="sidebar-count">1</span>
+              </a>
             </nav>
-          </div>
-
-          <div className="sidebar-payout">
-            <div className="sidebar-payout-heading">
-              <ShieldCheck size={18} />
-              <span>Payout split</span>
-            </div>
-            <div className="payout-values">
-              <strong>99%</strong>
-              <span>to the winner</span>
-            </div>
-            <div className="payout-bar" aria-hidden="true">
-              <span />
-            </div>
-            <p>Every tournament. A fixed 1% platform fee.</p>
           </div>
         </aside>
 
@@ -216,7 +192,7 @@ function App() {
               <h1 id="lobby-title">Card games worth bringing back.</h1>
               <p>
                 Compete in player-versus-player tournaments for Cheat, TAGO,
-                and the games you cannot find at an ordinary cardroom.
+                Durak, and the games you cannot find at an ordinary cardroom.
               </p>
               <div className="feature-actions">
                 <a className="primary-action" href="#games">
@@ -230,25 +206,6 @@ function App() {
             </div>
           </section>
 
-          <section className="lobby-stats" aria-label="Lobby statistics">
-            <div>
-              <span>Live tables</span>
-              <strong>02</strong>
-            </div>
-            <div>
-              <span>Open seats</span>
-              <strong>10</strong>
-            </div>
-            <div>
-              <span>Prize pools</span>
-              <strong>782 USDC</strong>
-            </div>
-            <div>
-              <span>Platform fee</span>
-              <strong>1%</strong>
-            </div>
-          </section>
-
           <section className="content-section" id="games" aria-labelledby="games-title">
             <div className="section-heading">
               <div>
@@ -256,7 +213,7 @@ function App() {
                 <h2 id="games-title">Games in the lobby</h2>
               </div>
               <div className="game-filters" aria-label="Filter games">
-                {(['all', 'cheat', 'tago'] as GameFilter[]).map((filter) => (
+                {(['all', 'cheat', 'tago', 'durak'] as GameFilter[]).map((filter) => (
                   <button
                     key={filter}
                     className={activeFilter === filter ? 'is-active' : ''}
@@ -271,71 +228,39 @@ function App() {
             </div>
 
             <div className="game-grid">
-              {visibleGames.map((game) => {
-                const occupancy = (game.players / game.capacity) * 100
+              {visibleGames.map((game) => (
+                <article className="game-card" key={game.id}>
+                  <div className="game-card-artwork">
+                    <img src={game.image} alt={`${game.name} card game artwork`} />
+                    <span className={`game-status game-status-${game.accent}`}>
+                      <span className="status-dot" aria-hidden="true" />
+                      Table forming
+                    </span>
+                    <span className="game-start-time">
+                      <Clock3 size={15} />
+                      {game.starts}
+                    </span>
+                  </div>
 
-                return (
-                  <article className="game-card" key={game.id}>
-                    <div className="game-card-artwork">
-                      <img src={game.image} alt={`${game.name} card game artwork`} />
-                      <span className={`game-status game-status-${game.accent}`}>
-                        <span className="status-dot" aria-hidden="true" />
-                        Table forming
-                      </span>
-                      <span className="game-start-time">
-                        <Clock3 size={15} />
-                        {game.starts}
-                      </span>
+                  <div className="game-card-content">
+                    <div className="game-card-title-row">
+                      <div>
+                        <span className="game-eyebrow">{game.eyebrow}</span>
+                        <h3>{game.name}</h3>
+                      </div>
+                      <a
+                        className="round-action"
+                        href="#tournaments"
+                        aria-label={`View ${game.name} tournaments`}
+                      >
+                        <ArrowRight size={19} />
+                      </a>
                     </div>
 
-                    <div className="game-card-content">
-                      <div className="game-card-title-row">
-                        <div>
-                          <span className="game-eyebrow">{game.eyebrow}</span>
-                          <h3>{game.name}</h3>
-                        </div>
-                        <a
-                          className="round-action"
-                          href="#tournaments"
-                          aria-label={`View ${game.name} tournaments`}
-                        >
-                          <ArrowRight size={19} />
-                        </a>
-                      </div>
-
-                      <p className="game-description">{game.description}</p>
-
-                      <div className="game-details">
-                        <div>
-                          <Ticket size={17} />
-                          <span>
-                            Entry
-                            <strong>{game.entry}</strong>
-                          </span>
-                        </div>
-                        <div>
-                          <CircleDollarSign size={17} />
-                          <span>
-                            Winner takes
-                            <strong>{game.prize}</strong>
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="seat-progress-row">
-                        <span>
-                          <Users size={16} />
-                          {game.players} of {game.capacity} joined
-                        </span>
-                        <strong>{game.capacity - game.players} seats left</strong>
-                      </div>
-                      <div className="seat-progress" aria-hidden="true">
-                        <span style={{ width: `${occupancy}%` }} />
-                      </div>
-                    </div>
-                  </article>
-                )
-              })}
+                    <p className="game-description">{game.description}</p>
+                  </div>
+                </article>
+              ))}
             </div>
           </section>
 
@@ -382,7 +307,7 @@ function App() {
 
           <footer className="footer">
             <span>RARETABLE</span>
-            <span>Player versus player. Winner takes 99%.</span>
+            <span>Competitive card games, built for players.</span>
           </footer>
         </main>
       </div>
