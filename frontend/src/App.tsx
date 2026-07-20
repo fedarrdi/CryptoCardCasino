@@ -1,7 +1,6 @@
-import SayHello from "./Component"
 
 function App() {
-  return <div><SayHello /></div>
+  return null
 }
 
 export default App
