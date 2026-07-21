@@ -1,6 +1,7 @@
 package com.raretable.casino.Common;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,5 +35,10 @@ public class Player
     public UUID getUniqueId()
     {
         return uniqueId;
+    }
+
+    public List<Card> getCards()
+    {
+        return Collections.unmodifiableList(cards);
     }
 }
