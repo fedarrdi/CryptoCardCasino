@@ -1,61 +1,45 @@
-package com.raretable.casino.Games;
+package com.raretable.casino.Games.Cheat;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.Iterator;
 
 import com.raretable.casino.Common.Card;
 import com.raretable.casino.Common.Player;
 import com.raretable.casino.Common.Rank;
 import com.raretable.casino.Common.Suit;
+import com.raretable.casino.Games.Game;
 import com.raretable.casino.Users.User;
 
-public class Cheat 
+public class Cheat extends Game
 {
     private static final int CARDS_PER_PLAYER = 8;
 
     private final List<Card> cards;
     private final List<Card> pile;
-    private final List<Player> players;
-    private int turn;
     private CheatGameStatus status;
     private PileEntry lastPlay;
     private UUID winnerId;
 
     public Cheat(List<User> users)
     {
-        this.players = createPlayers(users);
-        if (players.isEmpty())
-        {
-            throw new IllegalArgumentException("Cheat needs at least one player");
-        }
-
+        super(users);
         this.pile = new ArrayList<>();
-        this.cards = createDeck(players.size());
-        this.turn = ThreadLocalRandom.current().nextInt(players.size());
+        this.cards = createDeck(getPlayerCount());
+        selectRandomStartingPlayer();
         this.status = CheatGameStatus.IN_PROGRESS;
     }
 
     public Player removePlayer(Player player)
     {
-        Iterator<Player> iterator = players.iterator();
-
-        while (iterator.hasNext())
+        if (player == null)
         {
-            Player currentPlayer = iterator.next();
-
-            if (currentPlayer.getUniqueId().equals(player.getUniqueId()))
-            {
-                iterator.remove();
-                return currentPlayer;
-            }
+            throw new IllegalArgumentException("Player is required");
         }
 
-        throw new IllegalArgumentException("Player not found: " + player.getUniqueId());
+        return removePlayerById(player.getUniqueId());
     }
 
     
@@ -69,7 +53,7 @@ public class Cheat
     {
         for (int cardCount = 0; cardCount < CARDS_PER_PLAYER; cardCount++)
         {
-            for (Player player : players)
+            for (Player player : getPlayers())
             {
                 Card card = cards.remove(cards.size() - 1);
                 player.add_card_in_deck(card);
@@ -98,18 +82,6 @@ public class Cheat
         return new ArrayList<>(deck.subList(0, totalCardsNeeded));
     }
 
-    private List<Player> createPlayers(List<User> users)
-    {
-        List<Player> gamePlayers = new ArrayList<>();
-
-        for (User user : users)
-        {
-            gamePlayers.add(new Player(user.getUniqueId(), user.getName()));
-        }
-
-        return gamePlayers;
-    }
-
     public List<Card> getCardsForPlayer(UUID playerId)
     {
         return getPlayerById(playerId).getCards();
@@ -120,7 +92,7 @@ public class Cheat
         Player requestingPlayer = getPlayerById(userId);
         List<CheatPlayerState> playerStates = new ArrayList<>();
 
-        for (Player player : players)
+        for (Player player : getPlayers())
         {
             playerStates.add(new CheatPlayerState(
                 player.getUniqueId(),
@@ -149,16 +121,6 @@ public class Cheat
             lastDeclaredRank,
             winnerId
         );
-    }
-
-    private Player getCurrentPlayer()
-    {
-        return players.get(turn);
-    }
-
-    private void moveToNextTurn()
-    {
-        turn = (turn + 1) % players.size();
     }
 
     public void playCards(UUID userId, List<Integer> cardIndexes, Rank declaredRank)
@@ -222,11 +184,6 @@ public class Cheat
         moveToNextTurn();
     }
 
-    public boolean isPlayerTurn(UUID userId)
-    {
-        return getCurrentPlayer().getUniqueId().equals(userId);
-    }
-
     public CheatGameStatus getStatus()
     {
         return status;
@@ -288,37 +245,11 @@ public class Cheat
         return sortedIndexes;
     }
 
-    private Player getPlayerById(UUID playerId)
-    {
-        if (playerId == null)
-        {
-            throw new IllegalArgumentException("Player id is required");
-        }
-
-        for (Player player : players)
-        {
-            if (player.getUniqueId().equals(playerId))
-            {
-                return player;
-            }
-        }
-
-        throw new IllegalArgumentException("Player not found: " + playerId);
-    }
-
     private void validateGameInProgress()
     {
         if (status != CheatGameStatus.IN_PROGRESS)
         {
             throw new IllegalStateException("Game is not in progress");
-        }
-    }
-
-    private void validateCurrentPlayer(UUID userId)
-    {
-        if (!getCurrentPlayer().getUniqueId().equals(userId))
-        {
-            throw new IllegalStateException("It is not this player's turn");
         }
     }
 

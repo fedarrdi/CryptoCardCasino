@@ -1,4 +1,4 @@
-package com.raretable.casino.Games;
+package com.raretable.casino.Games.Cheat;
 
 import java.util.ArrayList;
 import java.util.Collections;

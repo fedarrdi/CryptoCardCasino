@@ -6,8 +6,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 import com.raretable.casino.Common.Rank;
-import com.raretable.casino.Games.Cheat;
-import com.raretable.casino.Games.CheatGameState;
+import com.raretable.casino.Games.Cheat.Cheat;
+import com.raretable.casino.Games.Cheat.CheatGameState;
 import com.raretable.casino.Tables.Table;
 
 @Service

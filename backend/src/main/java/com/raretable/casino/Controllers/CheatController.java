@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.raretable.casino.Games.CheatGameState;
+import com.raretable.casino.Games.Cheat.CheatGameState;
 import com.raretable.casino.Requests.PlayCardsRequest;
 import com.raretable.casino.Services.CheatGameService;
 

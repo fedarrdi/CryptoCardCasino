@@ -7,7 +7,7 @@ import java.util.UUID;
 
 import com.raretable.casino.Common.Card;
 import com.raretable.casino.Common.TableStatus;
-import com.raretable.casino.Games.Cheat;
+import com.raretable.casino.Games.Cheat.Cheat;
 import com.raretable.casino.Users.User;
 
 public class Table 
