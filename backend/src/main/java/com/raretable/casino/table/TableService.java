@@ -10,17 +10,20 @@ import com.raretable.casino.game.Game;
 import com.raretable.casino.game.GameFactory;
 import com.raretable.casino.game.GameType;
 import com.raretable.casino.user.User;
+import com.raretable.casino.user.UserService;
 
 @Service
 public final class TableService
 {
     private final Map<UUID, Table> tables;
     private final GameFactory gameFactory;
+    private final UserService userService;
 
-    public TableService(GameFactory gameFactory)
+    public TableService(GameFactory gameFactory, UserService userService)
     {
         this.tables = new ConcurrentHashMap<>();
         this.gameFactory = gameFactory;
+        this.userService = userService;
     }
 
     public UUID createTable(GameType gameType, int playersToStart)
@@ -32,10 +35,10 @@ public final class TableService
         return table.getId();
     }
 
-    public User joinTable(UUID tableId, String userName)
+    public User joinTable(UUID tableId, UUID userId)
     {
         Table table = getTable(tableId);
-        User user = new User(userName);
+        User user = userService.getUser(userId);
 
         synchronized (table)
         {

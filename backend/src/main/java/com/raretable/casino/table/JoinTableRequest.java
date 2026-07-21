@@ -1,7 +1,9 @@
 package com.raretable.casino.table;
 
-import jakarta.validation.constraints.NotBlank;
+import java.util.UUID;
 
-public record JoinTableRequest(@NotBlank String name)
+import jakarta.validation.constraints.NotNull;
+
+public record JoinTableRequest(@NotNull UUID userId)
 {
 }

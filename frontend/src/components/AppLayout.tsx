@@ -1,25 +1,58 @@
-import { useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import {
   Club,
   Diamond,
   Gamepad2,
   LayoutDashboard,
+  LogOut,
   Menu,
   Spade,
   Trophy,
+  UserRound,
   Wallet,
   X,
 } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { loginUser } from '../api/users.ts'
+import { clearStoredUser, getStoredUser, storeUser } from '../auth/devUser.ts'
 
 function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [loginMenuOpen, setLoginMenuOpen] = useState(false)
+  const [loginName, setLoginName] = useState('')
+  const [loginError, setLoginError] = useState<string | null>(null)
+  const [loginIsSubmitting, setLoginIsSubmitting] = useState(false)
+  const [devUser, setDevUser] = useState(() => getStoredUser())
   const location = useLocation()
 
   const closeMobileMenu = () => setMobileMenuOpen(false)
   const homeSectionIsActive = (hash: string) =>
     location.pathname === '/' &&
     (location.hash === hash || (!location.hash && hash === '#lobby'))
+
+  async function handleLoginSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLoginError(null)
+    setLoginIsSubmitting(true)
+
+    try {
+      const user = await loginUser(loginName)
+      storeUser(user)
+      setDevUser(user)
+      setLoginMenuOpen(false)
+      setLoginName('')
+    } catch (error) {
+      setLoginError((error as Error).message)
+    } finally {
+      setLoginIsSubmitting(false)
+    }
+  }
+
+  function handleLogout() {
+    clearStoredUser()
+    setDevUser(null)
+    setLoginMenuOpen(false)
+  }
 
   return (
     <div className="app-shell">
@@ -41,10 +74,51 @@ function AppLayout() {
         </Link>
 
         <div className="topbar-actions">
-          <button className="wallet-button" type="button">
-            <Wallet size={18} />
-            <span>Connect wallet</span>
-          </button>
+          <div className="dev-login">
+            <button
+              className={`wallet-button ${devUser ? 'is-connected' : ''}`}
+              type="button"
+              aria-expanded={loginMenuOpen}
+              onClick={() => setLoginMenuOpen((isOpen) => !isOpen)}
+            >
+              {devUser ? <UserRound size={18} /> : <Wallet size={18} />}
+              <span>{devUser ? devUser.name : 'Test login'}</span>
+            </button>
+
+            {loginMenuOpen && (
+              <div className="login-popover">
+                {devUser ? (
+                  <div className="login-session">
+                    <span>Signed in as</span>
+                    <strong>{devUser.name}</strong>
+                    <code>{devUser.userId}</code>
+                    <button className="login-secondary-button" type="button" onClick={handleLogout}>
+                      <LogOut size={16} />
+                      Log out
+                    </button>
+                  </div>
+                ) : (
+                  <form className="login-form" onSubmit={handleLoginSubmit}>
+                    <label htmlFor="dev-login-name">Name</label>
+                    <input
+                      id="dev-login-name"
+                      value={loginName}
+                      autoComplete="name"
+                      onChange={(event) => setLoginName(event.target.value)}
+                    />
+                    <button
+                      className="login-submit-button"
+                      type="submit"
+                      disabled={loginIsSubmitting || !loginName.trim()}
+                    >
+                      {loginIsSubmitting ? 'Creating...' : 'Create user'}
+                    </button>
+                    {loginError && <span className="login-error">{loginError}</span>}
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

@@ -7,12 +7,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.raretable.casino.table.TableNotFoundException;
+import com.raretable.casino.user.UserNotFoundException;
 
 @RestControllerAdvice
 public final class ApiExceptionHandler
 {
-    @ExceptionHandler(TableNotFoundException.class)
-    public ResponseEntity<ApiError> handleNotFound(TableNotFoundException exception)
+    @ExceptionHandler({TableNotFoundException.class, UserNotFoundException.class})
+    public ResponseEntity<ApiError> handleNotFound(RuntimeException exception)
     {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(new ApiError("NOT_FOUND", exception.getMessage()));

@@ -42,7 +42,7 @@ public final class TableController
         @Valid @RequestBody JoinTableRequest request
     )
     {
-        User user = tableService.joinTable(tableId, request.name());
+        User user = tableService.joinTable(tableId, request.userId());
         return new JoinTableResponse(user.getUniqueId(), user.getName());
     }
 }
