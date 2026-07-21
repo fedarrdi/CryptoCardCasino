@@ -8,6 +8,7 @@ import {
 } from 'react-router-dom'
 import AppLayout from './components/AppLayout.tsx'
 import GameLobbyPage from './pages/GameLobbyPage.tsx'
+import GameTablePage from './pages/GameTablePage.tsx'
 import HomePage from './pages/HomePage.tsx'
 
 function RouteScroll() {
@@ -47,6 +48,7 @@ function App() {
     <BrowserRouter>
       <RouteScroll />
       <Routes>
+        <Route path="games/:gameId/lobbies/:lobbyId" element={<GameTablePage />} />
         <Route element={<AppLayout />}>
           <Route index element={<HomePage />} />
           <Route path="games/:gameId" element={<GameLobbyPage />} />

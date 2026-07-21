@@ -117,13 +117,16 @@ function GameLobbyPage() {
               >
                 {lobby.availability}
               </span>
-              <button
-                className="join-lobby-button"
-                type="button"
-                disabled={lobby.availability === 'Full'}
-              >
-                {lobby.availability === 'Full' ? 'Full' : 'Join lobby'}
-              </button>
+              {lobby.availability === 'Full' ? (
+                <span className="join-lobby-button is-disabled">Full</span>
+              ) : (
+                <Link
+                  className="join-lobby-button"
+                  to={`/games/${game.id}/lobbies/${lobby.id}`}
+                >
+                  Join lobby
+                </Link>
+              )}
             </article>
           ))}
         </div>

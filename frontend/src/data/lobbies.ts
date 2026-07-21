@@ -6,7 +6,7 @@ export type GameLobby = {
   id: string
   stake: number
   players: number
-  capacity: number
+  capacity: 4 | 6
   starts: string
   availability: LobbyAvailability
 }

@@ -854,6 +854,9 @@ a:focus-visible {
 }
 
 .join-lobby-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid #ff7768;
@@ -865,11 +868,11 @@ a:focus-visible {
   cursor: pointer;
 }
 
-.join-lobby-button:hover:not(:disabled) {
+.join-lobby-button:hover:not(.is-disabled) {
   background: #ff7161;
 }
 
-.join-lobby-button:disabled {
+.join-lobby-button.is-disabled {
   border-color: var(--border);
   background: var(--surface-raised);
   color: #6f766f;
