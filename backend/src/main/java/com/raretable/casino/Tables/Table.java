@@ -5,6 +5,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 
+import com.raretable.casino.Common.Card;
 import com.raretable.casino.Common.TableStatus;
 import com.raretable.casino.Games.Cheat;
 import com.raretable.casino.Users.User;
@@ -72,4 +73,13 @@ public class Table
         throw new IllegalArgumentException("User not found: " + user.getUniqueId());
     }
 
+    public UUID get_table_id()
+    {
+        return uniqueId;
+    }
+
+    public Cheat get_game()
+    {
+        return game;
+    }
 }
