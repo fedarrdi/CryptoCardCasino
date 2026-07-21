@@ -1,6 +1,7 @@
 package com.raretable.casino.Tables;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 
@@ -46,6 +47,29 @@ public class Table
             game.deal_cards_to_players();
             status = TableStatus.IN_GAME;
         }
+    }
+
+    public User remove_player(User user)
+    {
+        if (status != TableStatus.WAITING)
+        {
+            throw new IllegalStateException("Cannot leave table while status is " + status);
+        }
+
+        Iterator<User> iterator = users.iterator();
+
+        while (iterator.hasNext())
+        {
+            User currentUser = iterator.next();
+
+            if (currentUser.getUniqueId().equals(user.getUniqueId()))
+            {
+                iterator.remove();
+                return currentUser;
+            }
+        }
+
+        throw new IllegalArgumentException("User not found: " + user.getUniqueId());
     }
 
 }
