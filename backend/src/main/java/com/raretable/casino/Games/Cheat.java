@@ -164,13 +164,13 @@ public class Cheat
     public void playCards(UUID userId, List<Integer> cardIndexes, Rank declaredRank)
     {
         validateGameInProgress();
+        validateCurrentPlayer(userId);
+
 
         if (declaredRank == null)
         {
             throw new IllegalArgumentException("Declared rank is required");
         }
-
-        validateCurrentPlayer(userId);
 
         Player player = getCurrentPlayer();
         List<Integer> indexesToRemove = getIndexesToRemove(cardIndexes, player);
