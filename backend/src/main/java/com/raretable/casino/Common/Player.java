@@ -8,13 +8,14 @@ import java.util.UUID;
 public class Player 
 {
     private final List<Card> cards;
-    private final UUID uniqueId; 
+    private final UUID uniqueId;
+    private final String name;
        
-    public Player(List<Card> cards) 
+    public Player(UUID uniqueId, String name)
     {
-        this.cards = new ArrayList<>(cards);
-        this.uniqueId = UUID.randomUUID();
-
+        this.cards = new ArrayList<>();
+        this.uniqueId = uniqueId;
+        this.name = name;
     }
 
     public Card getCardAtIndex(int index) 
@@ -35,6 +36,11 @@ public class Player
     public UUID getUniqueId()
     {
         return uniqueId;
+    }
+
+    public String getName()
+    {
+        return name;
     }
 
     public List<Card> getCards()

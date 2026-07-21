@@ -11,6 +11,7 @@ import com.raretable.casino.Common.Card;
 import com.raretable.casino.Common.Player;
 import com.raretable.casino.Common.Rank;
 import com.raretable.casino.Common.Suit;
+import com.raretable.casino.Users.User;
 
 public class Cheat 
 {
@@ -21,9 +22,9 @@ public class Cheat
     private final List<Player> players;
     private int turn;
 
-    public Cheat(List<Player> players)
+    public Cheat(List<User> users)
     {
-        this.players = new ArrayList<>(players);
+        this.players = createPlayers(users);
         this.pile = new ArrayList<>();
         this.cards = createDeck(players.size());
         this.turn = ThreadLocalRandom.current().nextInt(players.size());
@@ -85,6 +86,18 @@ public class Cheat
         Collections.shuffle(deck);
 
         return new ArrayList<>(deck.subList(0, totalCardsNeeded));
+    }
+
+    private List<Player> createPlayers(List<User> users)
+    {
+        List<Player> gamePlayers = new ArrayList<>();
+
+        for (User user : users)
+        {
+            gamePlayers.add(new Player(user.getUniqueId(), user.getName()));
+        }
+
+        return gamePlayers;
     }
 
     public List<Card> getCardsForPlayer(UUID playerId)
