@@ -117,7 +117,7 @@ public class Cheat
 
     public CheatGameState getGameState(UUID userId)
     {
-        Player user = getPlayerById(userId);
+        Player requestingPlayer = getPlayerById(userId);
         List<CheatPlayerState> playerStates = new ArrayList<>();
 
         for (Player player : players)
@@ -140,7 +140,7 @@ public class Cheat
         }
 
         return new CheatGameState(
-            user.getCards(),
+            requestingPlayer.getCards(),
             playerStates,
             getCurrentPlayer().getUniqueId(),
             status,
