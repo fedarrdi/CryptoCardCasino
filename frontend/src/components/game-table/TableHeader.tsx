@@ -1,28 +1,21 @@
-import {
-  ArrowLeft,
-  Diamond,
-  Maximize2,
-  Settings,
-  Volume2,
-} from 'lucide-react'
+import { ArrowLeft, Diamond } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Game } from '../../data/games.ts'
-import type { GameLobby } from '../../data/lobbies.ts'
 
 type TableHeaderProps = {
   game: Game
-  lobby: GameLobby
-  round: string
+  tableId: string
+  status: string
 }
 
-function TableHeader({ game, lobby, round }: TableHeaderProps) {
+function TableHeader({ game, tableId, status }: TableHeaderProps) {
   return (
     <header className="game-table-topbar">
       <div className="game-table-topbar-left">
         <Link
           className="game-table-icon-button"
           to={`/games/${game.id}`}
-          aria-label={`Leave table and return to ${game.name} lobbies`}
+          aria-label={`Leave table and return to ${game.name}`}
           title="Leave table"
         >
           <ArrowLeft />
@@ -38,27 +31,11 @@ function TableHeader({ game, lobby, round }: TableHeaderProps) {
 
       <div className="game-table-room-title">
         <strong>{game.name}</strong>
-        <span>
-          Table {lobby.id} / {lobby.stake} USDC
-        </span>
+        <span title={tableId}>Table {tableId.slice(0, 8)}</span>
       </div>
 
       <div className="game-table-tools">
-        <span className="game-table-round">{round}</span>
-        <button className="game-table-icon-button" type="button" aria-label="Sound" title="Sound">
-          <Volume2 />
-        </button>
-        <button className="game-table-icon-button" type="button" aria-label="Settings" title="Settings">
-          <Settings />
-        </button>
-        <button
-          className="game-table-icon-button"
-          type="button"
-          aria-label="Fullscreen"
-          title="Fullscreen"
-        >
-          <Maximize2 />
-        </button>
+        <span className="game-table-round">{status}</span>
       </div>
     </header>
   )

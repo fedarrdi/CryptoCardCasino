@@ -1,15 +1,27 @@
-import { useState } from 'react'
-import { ArrowLeft, Clock3, Coins, Gamepad2, Users } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
-import { games } from '../data/games.ts'
-import { lobbiesByGame } from '../data/lobbies.ts'
+import { useEffect, useState, type FormEvent } from 'react'
+import { ArrowLeft, Hash, LogIn, Plus, Users } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { createTable, joinTable } from '../api/tables.ts'
+import { useAuth } from '../auth/AuthContext.ts'
+import { findGame } from '../data/games.ts'
 
-type StakeFilter = 'all' | number
+type PendingAction = 'create' | 'join' | null
 
 function GameLobbyPage() {
   const { gameId } = useParams()
-  const [selectedStake, setSelectedStake] = useState<StakeFilter>('all')
-  const game = games.find((candidate) => candidate.id === gameId)
+  const game = findGame(gameId)
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const [playersToStart, setPlayersToStart] = useState(2)
+  const [tableId, setTableId] = useState('')
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (game) {
+      setPlayersToStart(game.minimumPlayers)
+    }
+  }, [game])
 
   if (!game) {
     return (
@@ -24,12 +36,62 @@ function GameLobbyPage() {
     )
   }
 
-  const lobbies = lobbiesByGame[game.id]
-  const stakes = lobbies.map((lobby) => lobby.stake)
-  const visibleLobbies =
-    selectedStake === 'all'
-      ? lobbies
-      : lobbies.filter((lobby) => lobby.stake === selectedStake)
+  const selectedGame = game
+
+  async function handleCreateTable(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (user === null) {
+      return
+    }
+
+    setPendingAction('create')
+    setError(null)
+
+    try {
+      const createdTable = await createTable(selectedGame.backendType, playersToStart)
+      await joinTable(createdTable.tableId, user.userId)
+      navigate(`/games/${selectedGame.id}/tables/${createdTable.tableId}`)
+    } catch (caughtError) {
+      if (!(caughtError instanceof Error)) {
+        throw caughtError
+      }
+
+      setError(caughtError.message)
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  async function handleJoinTable(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (user === null) {
+      return
+    }
+
+    const normalizedTableId = tableId.trim()
+    setPendingAction('join')
+    setError(null)
+
+    try {
+      await joinTable(normalizedTableId, user.userId)
+      navigate(`/games/${selectedGame.id}/tables/${normalizedTableId}`)
+    } catch (caughtError) {
+      if (!(caughtError instanceof Error)) {
+        throw caughtError
+      }
+
+      setError(caughtError.message)
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  const playerCounts = Array.from(
+    { length: selectedGame.maximumPlayers - selectedGame.minimumPlayers + 1 },
+    (_, index) => selectedGame.minimumPlayers + index,
+  )
 
   return (
     <div className="game-lobby-page">
@@ -39,97 +101,109 @@ function GameLobbyPage() {
       </Link>
 
       <section className="game-page-feature" aria-labelledby="game-page-title">
-        <img src={game.image} alt={`${game.name} card game artwork`} />
+        <img src={selectedGame.image} alt={`${selectedGame.name} card game artwork`} />
         <div className="game-page-feature-scrim" aria-hidden="true" />
         <div className="game-page-feature-content">
-          <span className="section-kicker">Game lobby</span>
-          <h1 id="game-page-title">{game.name}</h1>
-          <p>{game.description}</p>
+          <span className="section-kicker">Private table</span>
+          <h1 id="game-page-title">{selectedGame.name}</h1>
+          <p>{selectedGame.description}</p>
           <div className="game-page-tags">
             <span>
-              <Gamepad2 size={16} />
-              {game.eyebrow}
+              <Users size={16} />
+              {selectedGame.minimumPlayers}-{selectedGame.maximumPlayers} players
             </span>
             <span>
-              <Users size={16} />
-              Player versus player
+              <Hash size={16} />
+              Join with table ID
             </span>
           </div>
         </div>
       </section>
 
-      <section className="lobby-picker" aria-labelledby="lobby-picker-title">
-        <div className="lobby-picker-heading">
+      <section className="table-entry-section" aria-labelledby="table-entry-title">
+        <div className="section-heading">
           <div>
-            <span className="section-kicker">Available tables</span>
-            <h2 id="lobby-picker-title">Choose your stake</h2>
+            <span className="section-kicker">Take a seat</span>
+            <h2 id="table-entry-title">Open or join a table</h2>
           </div>
-
-          <div className="stake-filter" aria-label="Filter lobbies by stake">
-            {(['all', ...stakes] as StakeFilter[]).map((stake) => (
-              <button
-                key={stake}
-                className={selectedStake === stake ? 'is-active' : ''}
-                type="button"
-                aria-pressed={selectedStake === stake}
-                onClick={() => setSelectedStake(stake)}
-              >
-                {stake === 'all' ? 'All stakes' : `${stake} USDC`}
-              </button>
-            ))}
-          </div>
+          <span className={`session-indicator ${user ? 'is-ready' : ''}`}>
+            {user ? `Playing as ${user.name}` : 'Test login required'}
+          </span>
         </div>
 
-        <div className="lobby-list">
-          <div className="lobby-list-header" aria-hidden="true">
-            <span>Lobby</span>
-            <span>Stake</span>
-            <span>Players</span>
-            <span>Starts</span>
-            <span>Status</span>
-            <span />
-          </div>
-
-          {visibleLobbies.map((lobby) => (
-            <article className="lobby-row" key={lobby.id}>
-              <div className="lobby-identity">
-                <strong>Table {lobby.id}</strong>
-                <span>Public lobby</span>
-              </div>
-              <div className="lobby-cell" data-label="Stake">
-                <Coins size={17} />
-                <strong>{lobby.stake} USDC</strong>
-              </div>
-              <div className="lobby-cell" data-label="Players">
-                <Users size={17} />
-                <span>
-                  {lobby.players} / {lobby.capacity}
-                </span>
-              </div>
-              <div className="lobby-cell" data-label="Starts">
-                <Clock3 size={17} />
-                <span>{lobby.starts}</span>
-              </div>
-              <span
-                className={`lobby-availability lobby-availability-${lobby.availability
-                  .toLowerCase()
-                  .replace(' ', '-')}`}
-              >
-                {lobby.availability}
+        <div className="table-entry-grid">
+          <form className="table-entry-panel" onSubmit={handleCreateTable}>
+            <div className="table-entry-panel-heading">
+              <span className="table-entry-icon" aria-hidden="true">
+                <Plus />
               </span>
-              {lobby.availability === 'Full' ? (
-                <span className="join-lobby-button is-disabled">Full</span>
-              ) : (
-                <Link
-                  className="join-lobby-button"
-                  to={`/games/${game.id}/lobbies/${lobby.id}`}
-                >
-                  Join lobby
-                </Link>
-              )}
-            </article>
-          ))}
+              <div>
+                <h3>Create table</h3>
+                <p>Choose how many players are needed before the game starts.</p>
+              </div>
+            </div>
+
+            <fieldset className="player-count-fieldset" disabled={pendingAction !== null}>
+              <legend>Players</legend>
+              <div className="player-count-control">
+                {playerCounts.map((playerCount) => (
+                  <button
+                    className={playersToStart === playerCount ? 'is-active' : ''}
+                    type="button"
+                    aria-pressed={playersToStart === playerCount}
+                    onClick={() => setPlayersToStart(playerCount)}
+                    key={playerCount}
+                  >
+                    {playerCount}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <button
+              className="table-entry-submit"
+              type="submit"
+              disabled={user === null || pendingAction !== null}
+            >
+              <Plus size={17} />
+              {pendingAction === 'create' ? 'Opening table...' : 'Create and join'}
+            </button>
+          </form>
+
+          <form className="table-entry-panel" onSubmit={handleJoinTable}>
+            <div className="table-entry-panel-heading">
+              <span className="table-entry-icon" aria-hidden="true">
+                <LogIn />
+              </span>
+              <div>
+                <h3>Join table</h3>
+                <p>Enter the table ID shared by the player who created it.</p>
+              </div>
+            </div>
+
+            <label className="table-id-field">
+              <span>Table ID</span>
+              <input
+                value={tableId}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                spellCheck={false}
+                onChange={(event) => setTableId(event.target.value)}
+                disabled={pendingAction !== null}
+              />
+            </label>
+
+            <button
+              className="table-entry-submit"
+              type="submit"
+              disabled={user === null || pendingAction !== null || !tableId.trim()}
+            >
+              <LogIn size={17} />
+              {pendingAction === 'join' ? 'Joining table...' : 'Join table'}
+            </button>
+          </form>
         </div>
+
+        {error && <div className="form-error" role="alert">{error}</div>}
       </section>
     </div>
   )

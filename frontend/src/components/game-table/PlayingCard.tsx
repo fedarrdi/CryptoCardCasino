@@ -1,11 +1,5 @@
-import {
-  Club,
-  Diamond,
-  Heart,
-  Spade,
-  type LucideIcon,
-} from 'lucide-react'
-import type { CardFace, CardSuit } from '../../data/table.ts'
+import { Club, Diamond, Heart, Spade, type LucideIcon } from 'lucide-react'
+import type { CardSuit, VisualCard } from './types.ts'
 
 type CardSize = 'standard' | 'small'
 
@@ -16,7 +10,7 @@ type PlayingCardProps =
     }
   | {
       variant: 'face'
-      card: CardFace
+      card: VisualCard
       size?: CardSize
     }
 
@@ -41,6 +35,20 @@ function PlayingCard(props: PlayingCardProps) {
   }
 
   const { card } = props
+
+  if (card.kind === 'tago') {
+    return (
+      <span
+        className={`table-card table-card-face table-card-tago ${sizeClass}`}
+        role="img"
+        aria-label={`TAGO card ${card.value}`}
+      >
+        <span className="tago-card-value">{card.value}</span>
+        <Diamond className="tago-card-mark" fill="currentColor" />
+      </span>
+    )
+  }
+
   const SuitIcon = SUIT_ICONS[card.suit]
   const colorClass = card.suit === 'diamonds' || card.suit === 'hearts' ? 'is-red' : 'is-black'
 

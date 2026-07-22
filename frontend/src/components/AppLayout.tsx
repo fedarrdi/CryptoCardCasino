@@ -7,14 +7,20 @@ import {
   LogOut,
   Menu,
   Spade,
-  Trophy,
   UserRound,
   Wallet,
   X,
+  type LucideIcon,
 } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { loginUser } from '../api/users.ts'
-import { clearStoredUser, getStoredUser, storeUser } from '../auth/devUser.ts'
+import { useAuth } from '../auth/AuthContext.ts'
+import { games, type GameId } from '../data/games.ts'
+
+const GAME_ICONS: Record<GameId, LucideIcon> = {
+  cheat: Spade,
+  tago: Diamond,
+  'tien-len': Club,
+}
 
 function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -22,7 +28,7 @@ function AppLayout() {
   const [loginName, setLoginName] = useState('')
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loginIsSubmitting, setLoginIsSubmitting] = useState(false)
-  const [devUser, setDevUser] = useState(() => getStoredUser())
+  const { user, signIn, signOut } = useAuth()
   const location = useLocation()
 
   const closeMobileMenu = () => setMobileMenuOpen(false)
@@ -36,21 +42,22 @@ function AppLayout() {
     setLoginIsSubmitting(true)
 
     try {
-      const user = await loginUser(loginName)
-      storeUser(user)
-      setDevUser(user)
+      await signIn(loginName)
       setLoginMenuOpen(false)
       setLoginName('')
     } catch (error) {
-      setLoginError((error as Error).message)
+      if (!(error instanceof Error)) {
+        throw error
+      }
+
+      setLoginError(error.message)
     } finally {
       setLoginIsSubmitting(false)
     }
   }
 
   function handleLogout() {
-    clearStoredUser()
-    setDevUser(null)
+    signOut()
     setLoginMenuOpen(false)
   }
 
@@ -76,22 +83,22 @@ function AppLayout() {
         <div className="topbar-actions">
           <div className="dev-login">
             <button
-              className={`wallet-button ${devUser ? 'is-connected' : ''}`}
+              className={`wallet-button ${user ? 'is-connected' : ''}`}
               type="button"
               aria-expanded={loginMenuOpen}
               onClick={() => setLoginMenuOpen((isOpen) => !isOpen)}
             >
-              {devUser ? <UserRound size={18} /> : <Wallet size={18} />}
-              <span>{devUser ? devUser.name : 'Test login'}</span>
+              {user ? <UserRound size={18} /> : <Wallet size={18} />}
+              <span>{user ? user.name : 'Test login'}</span>
             </button>
 
             {loginMenuOpen && (
               <div className="login-popover">
-                {devUser ? (
+                {user ? (
                   <div className="login-session">
                     <span>Signed in as</span>
-                    <strong>{devUser.name}</strong>
-                    <code>{devUser.userId}</code>
+                    <strong>{user.name}</strong>
+                    <code>{user.userId}</code>
                     <button className="login-secondary-button" type="button" onClick={handleLogout}>
                       <LogOut size={16} />
                       Log out
@@ -159,47 +166,27 @@ function AppLayout() {
                 <Gamepad2 size={18} />
                 Games
               </Link>
-              <Link
-                className={homeSectionIsActive('#tournaments') ? 'is-active' : undefined}
-                to="/#tournaments"
-                onClick={closeMobileMenu}
-              >
-                <Trophy size={18} />
-                Tournaments
-              </Link>
             </nav>
           </div>
 
           <div className="sidebar-section">
             <span className="sidebar-label">Available games</span>
             <nav className="sidebar-navigation" aria-label="Game navigation">
-              <NavLink
-                className={({ isActive }) => (isActive ? 'is-active' : undefined)}
-                to="/games/cheat"
-                onClick={closeMobileMenu}
-              >
-                <Spade size={18} />
-                Cheat
-                <span className="sidebar-count">1</span>
-              </NavLink>
-              <NavLink
-                className={({ isActive }) => (isActive ? 'is-active' : undefined)}
-                to="/games/tago"
-                onClick={closeMobileMenu}
-              >
-                <Diamond size={18} />
-                TAGO
-                <span className="sidebar-count">1</span>
-              </NavLink>
-              <NavLink
-                className={({ isActive }) => (isActive ? 'is-active' : undefined)}
-                to="/games/durak"
-                onClick={closeMobileMenu}
-              >
-                <Club size={18} />
-                Durak
-                <span className="sidebar-count">1</span>
-              </NavLink>
+              {games.map((game) => {
+                const GameIcon = GAME_ICONS[game.id]
+
+                return (
+                  <NavLink
+                    className={({ isActive }) => (isActive ? 'is-active' : undefined)}
+                    to={`/games/${game.id}`}
+                    onClick={closeMobileMenu}
+                    key={game.id}
+                  >
+                    <GameIcon size={18} />
+                    {game.name}
+                  </NavLink>
+                )
+              })}
             </nav>
           </div>
         </aside>

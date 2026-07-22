@@ -1,58 +1,60 @@
-import { Coins, Hash, Users } from 'lucide-react'
+import { CircleDot, Hash, Users } from 'lucide-react'
 import type { Game } from '../../data/games.ts'
-import type { GameLobby } from '../../data/lobbies.ts'
-import type { TablePresentation } from '../../data/table.ts'
+import type { TablePlayerView } from './types.ts'
 
 type TableSidebarProps = {
   game: Game
-  lobby: GameLobby
-  occupiedSeats: number
-  presentation: TablePresentation
+  tableId: string
+  status: string
+  players: TablePlayerView[]
 }
 
-function TableSidebar({ game, lobby, occupiedSeats, presentation }: TableSidebarProps) {
+function TableSidebar({ game, tableId, status, players }: TableSidebarProps) {
+  const currentPlayer = players.find((player) => player.currentTurn)
+
   return (
     <aside className="game-table-sidebar" aria-label="Table information">
       <header className="table-feed-heading">
-        <span>Table feed</span>
-        <strong>{presentation.round}</strong>
+        <span>Table state</span>
+        <strong>{status}</strong>
       </header>
 
       <dl className="table-summary">
         <div>
-          <Coins aria-hidden="true" />
-          <dt>Stake</dt>
-          <dd>{lobby.stake} USDC</dd>
+          <CircleDot aria-hidden="true" />
+          <dt>Turn</dt>
+          <dd>{currentPlayer?.name ?? 'Complete'}</dd>
         </div>
         <div>
           <Users aria-hidden="true" />
           <dt>Players</dt>
-          <dd>
-            {occupiedSeats} / {lobby.capacity}
-          </dd>
+          <dd>{players.length}</dd>
         </div>
         <div>
           <Hash aria-hidden="true" />
           <dt>Table</dt>
-          <dd>{lobby.id}</dd>
+          <dd title={tableId}>{tableId.slice(0, 8)}</dd>
         </div>
       </dl>
 
-      <section className="table-feed" aria-labelledby="table-feed-title">
-        <h2 id="table-feed-title">Recent activity</h2>
+      <section className="table-feed player-roster" aria-labelledby="player-roster-title">
+        <h2 id="player-roster-title">Players</h2>
         <ol>
-          {presentation.events.map((event, index) => (
-            <li key={`${event.time}-${event.label}`}>
-              <span className={`table-feed-marker ${index === 0 ? 'is-current' : ''}`} aria-hidden="true" />
-              <span>{event.label}</span>
-              <time>{event.time}</time>
+          {players.map((player) => (
+            <li key={player.id}>
+              <span
+                className={`table-feed-marker ${player.currentTurn ? 'is-current' : ''}`}
+                aria-hidden="true"
+              />
+              <span>{player.name}</span>
+              <time>{player.cardCount} cards</time>
             </li>
           ))}
         </ol>
       </section>
 
       <footer className="table-sidebar-footer">
-        <span>Public table</span>
+        <span>Game</span>
         <strong>{game.eyebrow}</strong>
       </footer>
     </aside>
