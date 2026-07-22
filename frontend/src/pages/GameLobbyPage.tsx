@@ -1,11 +1,51 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { ArrowLeft, Hash, LogIn, Plus, Users } from 'lucide-react'
+import {
+  ArrowLeft,
+  LoaderCircle,
+  LogIn,
+  Plus,
+  RefreshCw,
+  Users,
+} from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { createTable, joinTable } from '../api/tables.ts'
+import {
+  createTable,
+  getAllTables,
+  joinTable,
+  type TableStatus,
+  type TableSummary,
+} from '../api/tables.ts'
 import { useAuth } from '../auth/AuthContext.ts'
 import { findGame } from '../data/games.ts'
 
-type PendingAction = 'create' | 'join' | null
+type PendingAction =
+  | { type: 'create' }
+  | { type: 'join'; tableId: string }
+  | null
+
+type TableListPhase = 'loading' | 'ready' | 'error'
+
+const TABLE_STATUS_LABELS: Record<TableStatus, string> = {
+  WAITING: 'Open',
+  IN_GAME: 'In progress',
+  CLOSED: 'Closed',
+}
+
+const TABLE_STATUS_ORDER: Record<TableStatus, number> = {
+  WAITING: 0,
+  IN_GAME: 1,
+  CLOSED: 2,
+}
+
+const TABLE_STATUS_CLASS_NAMES: Record<TableStatus, string> = {
+  WAITING: 'waiting',
+  IN_GAME: 'in-game',
+  CLOSED: 'closed',
+}
+
+function shortTableId(tableId: string): string {
+  return tableId.slice(0, 8).toUpperCase()
+}
 
 function GameLobbyPage() {
   const { gameId } = useParams()
@@ -13,15 +53,74 @@ function GameLobbyPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [playersToStart, setPlayersToStart] = useState(2)
-  const [tableId, setTableId] = useState('')
+  const [tables, setTables] = useState<TableSummary[]>([])
+  const [tableListPhase, setTableListPhase] = useState<TableListPhase>('loading')
+  const [tableListError, setTableListError] = useState<string | null>(null)
+  const [refreshRequest, setRefreshRequest] = useState(0)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     if (game) {
       setPlayersToStart(game.minimumPlayers)
     }
   }, [game])
+
+  useEffect(() => {
+    if (!game) {
+      return
+    }
+
+    const backendGameType = game.backendType
+    const abortController = new AbortController()
+    let pollingTimer: number | undefined
+
+    setTables([])
+    setTableListError(null)
+    setTableListPhase('loading')
+
+    async function loadTables() {
+      try {
+        const tableSummaries = await getAllTables(abortController.signal)
+        const matchingTables = tableSummaries
+          .filter((table) => table.gameType === backendGameType)
+          .sort((left, right) => {
+            const statusDifference =
+              TABLE_STATUS_ORDER[left.status] - TABLE_STATUS_ORDER[right.status]
+            return statusDifference || left.tableId.localeCompare(right.tableId)
+          })
+
+        setTables(matchingTables)
+        setTableListError(null)
+        setTableListPhase('ready')
+      } catch (caughtError) {
+        if (abortController.signal.aborted) {
+          return
+        }
+
+        if (!(caughtError instanceof Error)) {
+          throw caughtError
+        }
+
+        setTableListError(caughtError.message)
+        setTableListPhase('error')
+      } finally {
+        if (!abortController.signal.aborted) {
+          pollingTimer = window.setTimeout(loadTables, 4000)
+        }
+      }
+    }
+
+    void loadTables()
+
+    return () => {
+      abortController.abort()
+
+      if (pollingTimer !== undefined) {
+        window.clearTimeout(pollingTimer)
+      }
+    }
+  }, [game, refreshRequest])
 
   if (!game) {
     return (
@@ -45,8 +144,8 @@ function GameLobbyPage() {
       return
     }
 
-    setPendingAction('create')
-    setError(null)
+    setPendingAction({ type: 'create' })
+    setActionError(null)
 
     try {
       const createdTable = await createTable(selectedGame.backendType, playersToStart)
@@ -57,32 +156,29 @@ function GameLobbyPage() {
         throw caughtError
       }
 
-      setError(caughtError.message)
+      setActionError(caughtError.message)
     } finally {
       setPendingAction(null)
     }
   }
 
-  async function handleJoinTable(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
+  async function handleJoinTable(tableId: string) {
     if (user === null) {
       return
     }
 
-    const normalizedTableId = tableId.trim()
-    setPendingAction('join')
-    setError(null)
+    setPendingAction({ type: 'join', tableId })
+    setActionError(null)
 
     try {
-      await joinTable(normalizedTableId, user.userId)
-      navigate(`/games/${selectedGame.id}/tables/${normalizedTableId}`)
+      await joinTable(tableId, user.userId)
+      navigate(`/games/${selectedGame.id}/tables/${tableId}`)
     } catch (caughtError) {
       if (!(caughtError instanceof Error)) {
         throw caughtError
       }
 
-      setError(caughtError.message)
+      setActionError(caughtError.message)
     } finally {
       setPendingAction(null)
     }
@@ -92,6 +188,7 @@ function GameLobbyPage() {
     { length: selectedGame.maximumPlayers - selectedGame.minimumPlayers + 1 },
     (_, index) => selectedGame.minimumPlayers + index,
   )
+  const waitingTableCount = tables.filter((table) => table.status === 'WAITING').length
 
   return (
     <div className="game-lobby-page">
@@ -104,7 +201,7 @@ function GameLobbyPage() {
         <img src={selectedGame.image} alt={`${selectedGame.name} card game artwork`} />
         <div className="game-page-feature-scrim" aria-hidden="true" />
         <div className="game-page-feature-content">
-          <span className="section-kicker">Private table</span>
+          <span className="section-kicker">Cardroom</span>
           <h1 id="game-page-title">{selectedGame.name}</h1>
           <p>{selectedGame.description}</p>
           <div className="game-page-tags">
@@ -113,97 +210,150 @@ function GameLobbyPage() {
               {selectedGame.minimumPlayers}-{selectedGame.maximumPlayers} players
             </span>
             <span>
-              <Hash size={16} />
-              Join with table ID
+              <LogIn size={16} />
+              {tableListPhase === 'ready'
+                ? `${waitingTableCount} open ${waitingTableCount === 1 ? 'table' : 'tables'}`
+                : 'Checking open tables'}
             </span>
           </div>
         </div>
       </section>
 
-      <section className="table-entry-section" aria-labelledby="table-entry-title">
-        <div className="section-heading">
+      <section className="table-browser-section" aria-labelledby="table-browser-title">
+        <div className="table-browser-header">
           <div>
             <span className="section-kicker">Take a seat</span>
-            <h2 id="table-entry-title">Open or join a table</h2>
+            <h2 id="table-browser-title">{selectedGame.name} tables</h2>
           </div>
-          <span className={`session-indicator ${user ? 'is-ready' : ''}`}>
-            {user ? `Playing as ${user.name}` : 'Test login required'}
-          </span>
-        </div>
 
-        <div className="table-entry-grid">
-          <form className="table-entry-panel" onSubmit={handleCreateTable}>
-            <div className="table-entry-panel-heading">
-              <span className="table-entry-icon" aria-hidden="true">
-                <Plus />
-              </span>
-              <div>
-                <h3>Create table</h3>
-                <p>Choose how many players are needed before the game starts.</p>
-              </div>
-            </div>
+          <div className="table-browser-tools">
+            <form className="table-create-control" onSubmit={handleCreateTable}>
+              <fieldset disabled={pendingAction !== null}>
+                <legend>Seats</legend>
+                <div className="player-count-control">
+                  {playerCounts.map((playerCount) => (
+                    <button
+                      className={playersToStart === playerCount ? 'is-active' : ''}
+                      type="button"
+                      aria-pressed={playersToStart === playerCount}
+                      onClick={() => setPlayersToStart(playerCount)}
+                      key={playerCount}
+                    >
+                      {playerCount}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
 
-            <fieldset className="player-count-fieldset" disabled={pendingAction !== null}>
-              <legend>Players</legend>
-              <div className="player-count-control">
-                {playerCounts.map((playerCount) => (
-                  <button
-                    className={playersToStart === playerCount ? 'is-active' : ''}
-                    type="button"
-                    aria-pressed={playersToStart === playerCount}
-                    onClick={() => setPlayersToStart(playerCount)}
-                    key={playerCount}
-                  >
-                    {playerCount}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-
-            <button
-              className="table-entry-submit"
-              type="submit"
-              disabled={user === null || pendingAction !== null}
-            >
-              <Plus size={17} />
-              {pendingAction === 'create' ? 'Opening table...' : 'Create and join'}
-            </button>
-          </form>
-
-          <form className="table-entry-panel" onSubmit={handleJoinTable}>
-            <div className="table-entry-panel-heading">
-              <span className="table-entry-icon" aria-hidden="true">
-                <LogIn />
-              </span>
-              <div>
-                <h3>Join table</h3>
-                <p>Enter the table ID shared by the player who created it.</p>
-              </div>
-            </div>
-
-            <label className="table-id-field">
-              <span>Table ID</span>
-              <input
-                value={tableId}
-                placeholder="00000000-0000-0000-0000-000000000000"
-                spellCheck={false}
-                onChange={(event) => setTableId(event.target.value)}
-                disabled={pendingAction !== null}
-              />
-            </label>
+              <button
+                className="table-create-button"
+                type="submit"
+                disabled={user === null || pendingAction !== null}
+              >
+                {pendingAction?.type === 'create' ? (
+                  <LoaderCircle className="is-spinning" size={16} />
+                ) : (
+                  <Plus size={16} />
+                )}
+                New table
+              </button>
+            </form>
 
             <button
-              className="table-entry-submit"
-              type="submit"
-              disabled={user === null || pendingAction !== null || !tableId.trim()}
+              className="table-refresh-button"
+              type="button"
+              aria-label="Refresh tables"
+              title="Refresh tables"
+              onClick={() => setRefreshRequest((request) => request + 1)}
+              disabled={tableListPhase === 'loading'}
             >
-              <LogIn size={17} />
-              {pendingAction === 'join' ? 'Joining table...' : 'Join table'}
+              <RefreshCw className={tableListPhase === 'loading' ? 'is-spinning' : ''} size={17} />
             </button>
-          </form>
+          </div>
         </div>
 
-        {error && <div className="form-error" role="alert">{error}</div>}
+        {!user && <div className="table-login-notice">Use Test login to create or join a table.</div>}
+
+        <div className="table-list" aria-live="polite">
+          {tableListPhase === 'loading' && (
+            <div className="table-list-state">
+              <LoaderCircle className="is-spinning" aria-hidden="true" />
+              <span>Loading tables</span>
+            </div>
+          )}
+
+          {tableListPhase === 'error' && tableListError && (
+            <div className="table-list-state is-error" role="alert">
+              <strong>Unable to load tables</strong>
+              <span>{tableListError}</span>
+            </div>
+          )}
+
+          {tableListPhase === 'ready' && tables.length === 0 && (
+            <div className="table-list-state is-empty">
+              <span className="empty-table-mark" aria-hidden="true" />
+              <strong>No {selectedGame.name} tables yet</strong>
+              <span>Be the first player at the table.</span>
+            </div>
+          )}
+
+          {tableListPhase === 'ready' && tables.map((table) => {
+            const isWaiting = table.status === 'WAITING'
+            const isJoining =
+              pendingAction?.type === 'join' && pendingAction.tableId === table.tableId
+            const statusClassName = TABLE_STATUS_CLASS_NAMES[table.status]
+            const seatsFilled = Math.min(
+              100,
+              Math.round((table.playersJoined / table.playersToStart) * 100),
+            )
+
+            return (
+              <button
+                className={`table-list-row table-status-${statusClassName}`}
+                type="button"
+                aria-label={isWaiting ? `Join table ${shortTableId(table.tableId)}` : undefined}
+                onClick={() => void handleJoinTable(table.tableId)}
+                disabled={!isWaiting || user === null || pendingAction !== null}
+                key={table.tableId}
+              >
+                <span className="table-list-identity">
+                  <span className="table-list-number">Table {shortTableId(table.tableId)}</span>
+                  <span className="table-list-id">{table.tableId}</span>
+                </span>
+
+                <span className="table-list-seats">
+                  <span>
+                    <Users size={16} />
+                    {table.playersJoined} / {table.playersToStart} players
+                  </span>
+                  <span className="table-seat-meter" aria-hidden="true">
+                    <span style={{ width: `${seatsFilled}%` }} />
+                  </span>
+                </span>
+
+                <span className={`table-list-status is-${statusClassName}`}>
+                  {TABLE_STATUS_LABELS[table.status]}
+                </span>
+
+                <span className="table-list-action">
+                  {isJoining ? (
+                    <>
+                      <LoaderCircle className="is-spinning" size={16} />
+                      Joining
+                    </>
+                  ) : isWaiting ? (
+                    <>
+                      {user ? 'Join' : 'Sign in'}
+                      <LogIn size={16} />
+                    </>
+                  ) : null}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {actionError && <div className="form-error" role="alert">{actionError}</div>}
       </section>
     </div>
   )
