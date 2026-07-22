@@ -1,9 +1,11 @@
 package com.raretable.casino.table;
 
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -44,5 +46,11 @@ public final class TableController
     {
         User user = tableService.joinTable(tableId, request.userId());
         return new JoinTableResponse(user.getUniqueId(), user.getName());
+    }
+
+    @GetMapping("/get-all-tables")
+    public List<GetTableResponse> getAllTables()
+    {
+        return tableService.getAllTables();
     }
 }

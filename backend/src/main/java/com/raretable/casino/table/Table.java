@@ -130,6 +130,11 @@ public final class Table
         return status;
     }
 
+    public int getPlayersToStart()
+    {
+        return playersToStart;
+    }
+
     public List<User> getUsers()
     {
         return List.copyOf(users);

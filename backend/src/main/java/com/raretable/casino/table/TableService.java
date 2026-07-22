@@ -1,5 +1,6 @@
 package com.raretable.casino.table;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,6 +55,14 @@ public final class TableService
         return user;
     }
 
+    public List<GetTableResponse> getAllTables()
+    {
+        return tables.values()
+            .stream()
+            .map(this::toTableResponse)
+            .toList();
+    }
+
     public Table getTable(UUID tableId)
     {
         if (tableId == null)
@@ -96,6 +105,20 @@ public final class TableService
             }
 
             return gameClass.cast(game);
+        }
+    }
+
+    private GetTableResponse toTableResponse(Table table)
+    {
+        synchronized (table)
+        {
+            return new GetTableResponse(
+                table.getId(),
+                table.getGameType(),
+                table.getStatus(),
+                table.getUsers().size(),
+                table.getPlayersToStart()
+            );
         }
     }
 }
