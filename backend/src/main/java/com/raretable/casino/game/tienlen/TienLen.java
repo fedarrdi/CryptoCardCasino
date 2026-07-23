@@ -52,6 +52,7 @@ public final class TienLen extends Game
         this.deck = createShuffledDeck(random);
         this.passedPlayerIds = new HashSet<>();
         this.status = TienLenGameStatus.NOT_STARTED;
+        dealCards();
     }
 
     @Override
@@ -60,7 +61,7 @@ public final class TienLen extends Game
         return GameType.TIEN_LEN;
     }
 
-    public void dealCards()
+    private void dealCards()
     {
         if (status != TienLenGameStatus.NOT_STARTED)
         {

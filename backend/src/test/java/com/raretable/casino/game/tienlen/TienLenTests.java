@@ -22,8 +22,6 @@ class TienLenTests
         List<User> users = List.of(new User("Ada"), new User("Linus"), new User("Grace"));
         TienLen game = new TienLen(users, new Random(1));
 
-        game.dealCards();
-
         TienLenGameState state = game.getGameState(users.get(0).getUniqueId());
 
         assertEquals(TienLenGameStatus.IN_PROGRESS, game.getStatus());
@@ -65,8 +63,6 @@ class TienLenTests
     {
         List<User> users = List.of(new User("Ada"), new User("Linus"));
         TienLen game = new TienLen(users, new Random(2));
-        game.dealCards();
-
         UUID currentPlayerId = game.getGameState(users.get(0).getUniqueId()).currentPlayerId();
         UUID waitingPlayerId = users.stream()
             .map(User::getUniqueId)
@@ -89,8 +85,6 @@ class TienLenTests
     {
         List<User> users = List.of(new User("Ada"), new User("Linus"));
         TienLen game = new TienLen(users, new Random(3));
-        game.dealCards();
-
         UUID firstPlayerId = game.getGameState(users.get(0).getUniqueId()).currentPlayerId();
 
         game.playCards(firstPlayerId, List.of(0), TienLenCombinationType.SINGLE);
@@ -134,8 +128,6 @@ class TienLenTests
     private void assertGameCanBeCompleted(List<User> users)
     {
         TienLen game = new TienLen(users, new Random(4));
-        game.dealCards();
-
         UUID leaderId = game.getGameState(users.get(0).getUniqueId()).currentPlayerId();
 
         for (int cardsPlayed = 0; cardsPlayed < 13; cardsPlayed++)

@@ -21,8 +21,6 @@ class TagoTests
         List<User> users = List.of(new User("Ada"), new User("Linus"));
         Tago game = new Tago(users, new Random(2));
 
-        game.dealCards();
-
         assertEquals(TagoGameStatus.FIRST_BETTING_ROUND, game.getStatus());
         assertEquals(2, game.getRevealedPointCards().size());
         assertEquals(2, game.getVisibleCardsForPlayer(users.get(0).getUniqueId()).size());
@@ -38,8 +36,6 @@ class TagoTests
     {
         List<User> users = List.of(new User("Ada"), new User("Linus"), new User("Grace"));
         Tago game = new Tago(users, new Random(4));
-        game.dealCards();
-
         completeCurrentRound(game, TagoGameStatus.FIRST_BETTING_ROUND);
 
         assertEquals(3, game.getRevealedPointCards().size());
@@ -74,8 +70,6 @@ class TagoTests
         User secondUser = new User("Linus");
         List<User> users = List.of(firstUser, secondUser);
         Tago game = new Tago(users, new Random(8));
-        game.dealCards();
-
         UUID foldingPlayerId = game.getCurrentPlayerId();
         UUID remainingPlayerId = foldingPlayerId.equals(firstUser.getUniqueId())
             ? secondUser.getUniqueId()
@@ -93,8 +87,6 @@ class TagoTests
     {
         List<User> users = List.of(new User("Ada"), new User("Linus"), new User("Grace"));
         Tago game = new Tago(users, new Random(1));
-        game.dealCards();
-
         completeCurrentRound(game, TagoGameStatus.FIRST_BETTING_ROUND);
 
         assertEquals(TagoGameStatus.POINT_VALUE_SELECTION, game.getStatus());

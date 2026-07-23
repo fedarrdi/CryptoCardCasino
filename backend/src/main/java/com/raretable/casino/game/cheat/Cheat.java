@@ -32,6 +32,7 @@ public final class Cheat extends Game
         super(validateUsers(users));
         this.pile = new ArrayList<>();
         this.deck = createDeck(getPlayerCount());
+        dealCards();
         selectRandomStartingPlayer();
         this.status = CheatGameStatus.IN_PROGRESS;
     }
@@ -57,7 +58,7 @@ public final class Cheat extends Game
         Collections.shuffle(deck);
     }
 
-    public void dealCardsToPlayers()
+    private void dealCards()
     {
         for (int cardCount = 0; cardCount < CARDS_PER_PLAYER; cardCount++)
         {

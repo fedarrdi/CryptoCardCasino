@@ -8,7 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
 
 import com.raretable.casino.game.Game;
-import com.raretable.casino.game.GameFactory;
 import com.raretable.casino.game.GameType;
 import com.raretable.casino.user.User;
 import com.raretable.casino.user.UserService;
@@ -17,20 +16,16 @@ import com.raretable.casino.user.UserService;
 public final class TableService
 {
     private final Map<UUID, Table> tables;
-    private final GameFactory gameFactory;
     private final UserService userService;
 
-    public TableService(GameFactory gameFactory, UserService userService)
+    public TableService(UserService userService)
     {
         this.tables = new ConcurrentHashMap<>();
-        this.gameFactory = gameFactory;
         this.userService = userService;
     }
 
     public UUID createTable(GameType gameType, int playersToStart)
     {
-        gameFactory.validatePlayerCount(gameType, playersToStart);
-
         Table table = new Table(gameType, playersToStart);
         tables.put(table.getId(), table);
         return table.getId();
@@ -47,8 +42,7 @@ public final class TableService
 
             if (table.isReadyToStart())
             {
-                Game game = gameFactory.create(table.getGameType(), table.getUsers());
-                table.startGame(game);
+                table.startGame();
             }
         }
 

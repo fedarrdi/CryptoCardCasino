@@ -7,6 +7,9 @@ import java.util.UUID;
 
 import com.raretable.casino.game.Game;
 import com.raretable.casino.game.GameType;
+import com.raretable.casino.game.cheat.Cheat;
+import com.raretable.casino.game.tago.Tago;
+import com.raretable.casino.game.tienlen.TienLen;
 import com.raretable.casino.user.User;
 
 public final class Table
@@ -26,10 +29,7 @@ public final class Table
             throw new IllegalArgumentException("Game type is required");
         }
 
-        if (playersToStart < 1)
-        {
-            throw new IllegalArgumentException("Players to start must be positive");
-        }
+        validatePlayerCount(gameType, playersToStart);
 
         this.id = UUID.randomUUID();
         this.gameType = gameType;
@@ -94,25 +94,65 @@ public final class Table
         return status == TableStatus.WAITING && users.size() == playersToStart;
     }
 
-    public void startGame(Game game)
+    public void startGame()
     {
         if (!isReadyToStart())
         {
             throw new IllegalStateException("Table is not ready to start");
         }
 
-        if (game == null)
-        {
-            throw new IllegalArgumentException("Game is required");
-        }
-
-        if (game.getType() != gameType)
-        {
-            throw new IllegalArgumentException("Game type does not match the table");
-        }
-
-        this.game = game;
+        this.game = createGame();
         this.status = TableStatus.IN_GAME;
+    }
+
+    private Game createGame()
+    {
+        return switch (gameType)
+        {
+            case CHEAT -> new Cheat(users);
+            case TAGO -> new Tago(users);
+            case TIEN_LEN -> new TienLen(users);
+        };
+    }
+
+    private static void validatePlayerCount(GameType gameType, int playerCount)
+    {
+        switch (gameType)
+        {
+            case CHEAT -> validatePlayerCount(
+                playerCount,
+                Cheat.MIN_PLAYERS,
+                Cheat.MAX_PLAYERS,
+                "Cheat"
+            );
+            case TAGO -> validatePlayerCount(
+                playerCount,
+                Tago.MIN_PLAYERS,
+                Tago.MAX_PLAYERS,
+                "TAGO"
+            );
+            case TIEN_LEN -> validatePlayerCount(
+                playerCount,
+                TienLen.MIN_PLAYERS,
+                TienLen.MAX_PLAYERS,
+                "Tien Len"
+            );
+        }
+    }
+
+    private static void validatePlayerCount(
+        int playerCount,
+        int minimumPlayers,
+        int maximumPlayers,
+        String gameName
+    )
+    {
+        if (playerCount < minimumPlayers || playerCount > maximumPlayers)
+        {
+            throw new IllegalArgumentException(
+                gameName + " needs between " + minimumPlayers + " and " + maximumPlayers + " players"
+            );
+        }
     }
 
     public UUID getId()

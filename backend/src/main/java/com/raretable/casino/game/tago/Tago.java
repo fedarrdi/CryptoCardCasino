@@ -59,6 +59,7 @@ public final class Tago extends Game
         this.status = TagoGameStatus.NOT_STARTED;
         this.winnerIds = List.of();
         this.scores = Map.of();
+        dealCards();
     }
 
     @Override
@@ -67,7 +68,7 @@ public final class Tago extends Game
         return GameType.TAGO;
     }
 
-    public void dealCards()
+    private void dealCards()
     {
         if (status != TagoGameStatus.NOT_STARTED)
         {
