@@ -15,6 +15,7 @@ import com.raretable.casino.user.User;
 public final class Table
 {
     private final UUID id;
+    private final UUID creatorUserId;
     private final GameType gameType;
     private final int playersToStart;
     private final List<User> users;
@@ -22,20 +23,27 @@ public final class Table
     private Game game;
     private TableStatus status;
 
-    public Table(GameType gameType, int playersToStart)
+    public Table(GameType gameType, int playersToStart, User creator)
     {
         if (gameType == null)
         {
             throw new IllegalArgumentException("Game type is required");
         }
 
+        if (creator == null)
+        {
+            throw new IllegalArgumentException("Table creator is required");
+        }
+
         validatePlayerCount(gameType, playersToStart);
 
         this.id = UUID.randomUUID();
+        this.creatorUserId = creator.getUniqueId();
         this.gameType = gameType;
         this.playersToStart = playersToStart;
         this.users = new ArrayList<>();
         this.status = TableStatus.WAITING;
+        this.users.add(creator);
     }
 
     public void addUser(User user)
@@ -92,6 +100,11 @@ public final class Table
     public boolean isReadyToStart()
     {
         return status == TableStatus.WAITING && users.size() == playersToStart;
+    }
+
+    public boolean isCreator(UUID userId)
+    {
+        return creatorUserId.equals(userId);
     }
 
     public void startGame()

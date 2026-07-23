@@ -5,7 +5,7 @@ import {
   getGameState,
   type LoadedGameState,
 } from '../api/games.ts'
-import { isGameWaitingError } from '../api/client.ts'
+import { isGameWaitingError, isTableNotFoundError } from '../api/client.ts'
 import { leaveTable } from '../api/tables.ts'
 import { useAuth } from '../auth/AuthContext.ts'
 import CheatTableView from '../components/game-table/games/CheatTableView.tsx'
@@ -132,7 +132,15 @@ function GameTablePage() {
           return
         }
 
-        if (isGameWaitingError(error)) {
+        if (isTableNotFoundError(error)) {
+          continuePolling = false
+          navigate(`/games/${activeGame.id}`, {
+            replace: true,
+            state: {
+              tableClosedMessage: 'The table was closed because its creator left.',
+            },
+          })
+        } else if (isGameWaitingError(error)) {
           setPhase('waiting')
           setLoadError(null)
         } else {
@@ -160,7 +168,7 @@ function GameTablePage() {
         window.clearTimeout(pollTimer)
       }
     }
-  }, [actionPending, game, tableId, user])
+  }, [actionPending, game, navigate, tableId, user])
 
   async function performAction(
     operation: () => Promise<LoadedGameState>,

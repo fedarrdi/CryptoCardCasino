@@ -22,13 +22,14 @@ export function getAllTables(signal?: AbortSignal): Promise<TableSummary[]> {
 export function createTable(
   gameType: BackendGameType,
   playersToStart: number,
+  creatorUserId: string,
 ): Promise<CreateTableResponse> {
   return apiRequest<CreateTableResponse>('/api/tables', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ gameType, playersToStart }),
+    body: JSON.stringify({ gameType, playersToStart, creatorUserId }),
   })
 }
 

@@ -24,9 +24,10 @@ public final class TableService
         this.userService = userService;
     }
 
-    public UUID createTable(GameType gameType, int playersToStart)
+    public UUID createTable(GameType gameType, int playersToStart, UUID creatorUserId)
     {
-        Table table = new Table(gameType, playersToStart);
+        User creator = userService.getUser(creatorUserId);
+        Table table = new Table(gameType, playersToStart, creator);
         tables.put(table.getId(), table);
         return table.getId();
     }
@@ -38,6 +39,7 @@ public final class TableService
 
         synchronized (table)
         {
+            requireRegisteredTable(tableId, table);
             table.addUser(user);
 
             if (table.isReadyToStart())
@@ -53,7 +55,13 @@ public final class TableService
 
         synchronized (table)
         {
+            requireRegisteredTable(tableId, table);
             table.removeUser(userId);
+
+            if (table.isCreator(userId))
+            {
+                tables.remove(tableId, table);
+            }
         }
     }
 
@@ -121,6 +129,14 @@ public final class TableService
                 table.getUsers().size(),
                 table.getPlayersToStart()
             );
+        }
+    }
+
+    private void requireRegisteredTable(UUID tableId, Table table)
+    {
+        if (tables.get(tableId) != table)
+        {
+            throw new TableNotFoundException(tableId);
         }
     }
 }

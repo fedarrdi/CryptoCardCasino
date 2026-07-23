@@ -7,7 +7,7 @@ import {
   RefreshCw,
   Users,
 } from 'lucide-react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   createTable,
   getAllTables,
@@ -50,6 +50,7 @@ function shortTableId(tableId: string): string {
 function GameLobbyPage() {
   const { gameId } = useParams()
   const game = findGame(gameId)
+  const location = useLocation()
   const navigate = useNavigate()
   const { user } = useAuth()
   const [playersToStart, setPlayersToStart] = useState(2)
@@ -148,8 +149,11 @@ function GameLobbyPage() {
     setActionError(null)
 
     try {
-      const createdTable = await createTable(selectedGame.backendType, playersToStart)
-      await joinTable(createdTable.tableId, user.userId)
+      const createdTable = await createTable(
+        selectedGame.backendType,
+        playersToStart,
+        user.userId,
+      )
       navigate(`/games/${selectedGame.id}/tables/${createdTable.tableId}`)
     } catch (caughtError) {
       if (!(caughtError instanceof Error)) {
@@ -189,6 +193,7 @@ function GameLobbyPage() {
     (_, index) => selectedGame.minimumPlayers + index,
   )
   const waitingTableCount = tables.filter((table) => table.status === 'WAITING').length
+  const navigationState = location.state as { tableClosedMessage?: string } | null
 
   return (
     <div className="game-lobby-page">
@@ -273,6 +278,11 @@ function GameLobbyPage() {
         </div>
 
         {!user && <div className="table-login-notice">Use Test login to create or join a table.</div>}
+        {navigationState?.tableClosedMessage && (
+          <div className="table-lobby-notice" role="status">
+            {navigationState.tableClosedMessage}
+          </div>
+        )}
 
         <div className="table-list" aria-live="polite">
           {tableListPhase === 'loading' && (

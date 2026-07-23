@@ -46,3 +46,11 @@ export function isGameWaitingError(error: unknown): boolean {
     error.message === 'Game has not started'
   )
 }
+
+export function isTableNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof ApiRequestError &&
+    error.status === 404 &&
+    error.code === 'NOT_FOUND'
+  )
+}

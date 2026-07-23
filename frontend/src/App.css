@@ -713,13 +713,20 @@ select:focus-visible {
   opacity: 0.5;
 }
 
-.table-login-notice {
+.table-login-notice,
+.table-lobby-notice {
   margin-bottom: 12px;
   padding: 9px 11px;
   border-left: 2px solid var(--gold);
   background: rgba(231, 191, 106, 0.06);
   color: #b5aa8d;
   font-size: 0.7rem;
+}
+
+.table-lobby-notice {
+  border-left-color: #69d88a;
+  background: rgba(105, 216, 138, 0.06);
+  color: #9fc9aa;
 }
 
 .table-list {

@@ -32,7 +32,11 @@ public final class TableController
         @Valid @RequestBody CreateTableRequest request
     )
     {
-        UUID tableId = tableService.createTable(request.gameType(), request.playersToStart());
+        UUID tableId = tableService.createTable(
+            request.gameType(),
+            request.playersToStart(),
+            request.creatorUserId()
+        );
         CreateTableResponse response = new CreateTableResponse(tableId);
 
         return ResponseEntity.created(URI.create("/api/tables/" + tableId)).body(response);
