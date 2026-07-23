@@ -37,23 +37,31 @@ public final class CheatGameService
     )
     {
         Cheat game = getGame(tableId);
+        CheatGameState state;
 
         synchronized (game)
         {
             game.playCards(userId, cardIndexes, declaredRank);
-            return game.getGameState(userId);
+            state = game.getGameState(userId);
         }
+
+        tableService.closeTableIfFinished(tableId);
+        return state;
     }
 
     public CheatGameState callBluff(UUID tableId, UUID userId)
     {
         Cheat game = getGame(tableId);
+        CheatGameState state;
 
         synchronized (game)
         {
             game.callBluff(userId);
-            return game.getGameState(userId);
+            state = game.getGameState(userId);
         }
+
+        tableService.closeTableIfFinished(tableId);
+        return state;
     }
 
     private Cheat getGame(UUID tableId)

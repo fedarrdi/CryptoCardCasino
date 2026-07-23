@@ -38,6 +38,8 @@ public abstract class Game
 
     public abstract GameType getType();
 
+    public abstract boolean isFinished();
+
     protected final List<Player> getPlayers()
     {
         return Collections.unmodifiableList(players);

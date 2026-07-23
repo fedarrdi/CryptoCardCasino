@@ -65,6 +65,21 @@ public final class TableService
         }
     }
 
+    public void closeTableIfFinished(UUID tableId)
+    {
+        Table table = getTable(tableId);
+
+        synchronized (table)
+        {
+            requireRegisteredTable(tableId, table);
+
+            if (table.getStatus() == TableStatus.IN_GAME && table.getGame().isFinished())
+            {
+                table.close();
+            }
+        }
+    }
+
     public List<GetTableResponse> getAllTables()
     {
         return tables.values()

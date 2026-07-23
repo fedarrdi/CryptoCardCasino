@@ -30,34 +30,46 @@ public final class TagoGameService
     public TagoGameState completeBettingTurn(UUID tableId, UUID userId)
     {
         Tago game = getGame(tableId);
+        TagoGameState state;
 
         synchronized (game)
         {
             game.completeBettingTurn(userId);
-            return game.getGameState(userId);
+            state = game.getGameState(userId);
         }
+
+        tableService.closeTableIfFinished(tableId);
+        return state;
     }
 
     public TagoGameState fold(UUID tableId, UUID userId)
     {
         Tago game = getGame(tableId);
+        TagoGameState state;
 
         synchronized (game)
         {
             game.fold(userId);
-            return game.getGameState(userId);
+            state = game.getGameState(userId);
         }
+
+        tableService.closeTableIfFinished(tableId);
+        return state;
     }
 
     public TagoGameState choosePointValue(UUID tableId, UUID userId, double pointValue)
     {
         Tago game = getGame(tableId);
+        TagoGameState state;
 
         synchronized (game)
         {
             game.choosePointValue(userId, pointValue);
-            return game.getGameState(userId);
+            state = game.getGameState(userId);
         }
+
+        tableService.closeTableIfFinished(tableId);
+        return state;
     }
 
     private Tago getGame(UUID tableId)

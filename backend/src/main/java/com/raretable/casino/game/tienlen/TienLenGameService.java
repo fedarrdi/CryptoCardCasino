@@ -36,23 +36,31 @@ public final class TienLenGameService
     )
     {
         TienLen game = getGame(tableId);
+        TienLenGameState state;
 
         synchronized (game)
         {
             game.playCards(userId, cardIndexes, combinationType);
-            return game.getGameState(userId);
+            state = game.getGameState(userId);
         }
+
+        tableService.closeTableIfFinished(tableId);
+        return state;
     }
 
     public TienLenGameState pass(UUID tableId, UUID userId)
     {
         TienLen game = getGame(tableId);
+        TienLenGameState state;
 
         synchronized (game)
         {
             game.pass(userId);
-            return game.getGameState(userId);
+            state = game.getGameState(userId);
         }
+
+        tableService.closeTableIfFinished(tableId);
+        return state;
     }
 
     private TienLen getGame(UUID tableId)

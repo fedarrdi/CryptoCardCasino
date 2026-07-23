@@ -61,6 +61,12 @@ public final class TienLen extends Game
         return GameType.TIEN_LEN;
     }
 
+    @Override
+    public boolean isFinished()
+    {
+        return status == TienLenGameStatus.FINISHED;
+    }
+
     private void dealCards()
     {
         if (status != TienLenGameStatus.NOT_STARTED)

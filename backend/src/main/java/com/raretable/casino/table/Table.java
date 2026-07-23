@@ -118,6 +118,21 @@ public final class Table
         this.status = TableStatus.IN_GAME;
     }
 
+    public void close()
+    {
+        if (status != TableStatus.IN_GAME)
+        {
+            throw new IllegalStateException("Cannot close table while status is " + status);
+        }
+
+        if (!game.isFinished())
+        {
+            throw new IllegalStateException("Cannot close table before the game finishes");
+        }
+
+        status = TableStatus.CLOSED;
+    }
+
     private Game createGame()
     {
         return switch (gameType)

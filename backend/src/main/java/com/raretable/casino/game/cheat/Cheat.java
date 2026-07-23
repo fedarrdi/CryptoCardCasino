@@ -43,6 +43,12 @@ public final class Cheat extends Game
         return GameType.CHEAT;
     }
 
+    @Override
+    public boolean isFinished()
+    {
+        return status == CheatGameStatus.FINISHED;
+    }
+
     public Player removePlayer(Player player)
     {
         if (player == null)
@@ -144,6 +150,12 @@ public final class Cheat extends Game
 
         Player player = getCurrentPlayer();
         List<Integer> indexesToRemove = getIndexesToRemove(cardIndexes, player);
+
+        if (finishGameIfLastPlayerHasNoCards())
+        {
+            return;
+        }
+
         List<Card> playedCards = new ArrayList<>();
 
         for (int index : indexesToRemove)
@@ -179,12 +191,8 @@ public final class Cheat extends Game
 
         movePileToPlayer(caller);
 
-        if (lastPlayer.getCards().isEmpty())
+        if (finishGameIfLastPlayerHasNoCards())
         {
-            pile.clear();
-            winnerId = lastPlayer.getUniqueId();
-            status = CheatGameStatus.FINISHED;
-            lastPlay = null;
             return;
         }
 
@@ -200,6 +208,27 @@ public final class Cheat extends Game
     public UUID getWinnerId()
     {
         return winnerId;
+    }
+
+    private boolean finishGameIfLastPlayerHasNoCards()
+    {
+        if (lastPlay == null)
+        {
+            return false;
+        }
+
+        Player lastPlayer = getPlayerById(lastPlay.getPlayerId());
+
+        if (!lastPlayer.getCards().isEmpty())
+        {
+            return false;
+        }
+
+        pile.clear();
+        lastPlay = null;
+        winnerId = lastPlayer.getUniqueId();
+        status = CheatGameStatus.FINISHED;
+        return true;
     }
 
     private void clearPileAfterBluffCall()

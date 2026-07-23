@@ -68,6 +68,12 @@ public final class Tago extends Game
         return GameType.TAGO;
     }
 
+    @Override
+    public boolean isFinished()
+    {
+        return status == TagoGameStatus.FINISHED;
+    }
+
     private void dealCards()
     {
         if (status != TagoGameStatus.NOT_STARTED)
