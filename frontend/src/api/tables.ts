@@ -40,3 +40,12 @@ export function joinTable(tableId: string, userId: string): Promise<void> {
     },
   )
 }
+
+export function leaveTable(tableId: string, userId: string): Promise<void> {
+  return apiRequestWithoutResponse(
+    `/api/tables/${encodeURIComponent(tableId)}/users/${encodeURIComponent(userId)}`,
+    {
+      method: 'DELETE',
+    },
+  )
+}

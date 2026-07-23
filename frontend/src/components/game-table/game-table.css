@@ -1105,6 +1105,15 @@
   top: 24px;
   left: 28px;
   margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.waiting-table-back:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .waiting-table-panel {
@@ -1199,6 +1208,12 @@
 .waiting-status svg {
   width: 15px;
   height: 15px;
+}
+
+.waiting-leave-error {
+  margin-top: 16px;
+  color: #ff9a90;
+  font-size: 0.72rem;
 }
 
 @media (max-width: 1120px) {

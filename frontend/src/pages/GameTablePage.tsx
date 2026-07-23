@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft, Copy, LoaderCircle } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   getGameState,
   type LoadedGameState,
 } from '../api/games.ts'
 import { isGameWaitingError } from '../api/client.ts'
+import { leaveTable } from '../api/tables.ts'
 import { useAuth } from '../auth/AuthContext.ts'
 import CheatTableView from '../components/game-table/games/CheatTableView.tsx'
 import TagoTableView from '../components/game-table/games/TagoTableView.tsx'
@@ -36,10 +37,12 @@ function TableMessage({ title, message, linkLabel, to }: TableMessageProps) {
   )
 }
 
-function WaitingTable({ gameName, gamePath, tableId }: {
+function WaitingTable({ gameName, tableId, isLeaving, leaveError, onLeave }: {
   gameName: string
-  gamePath: string
   tableId: string
+  isLeaving: boolean
+  leaveError: string | null
+  onLeave: () => void
 }) {
   const [copied, setCopied] = useState(false)
 
@@ -50,10 +53,19 @@ function WaitingTable({ gameName, gamePath, tableId }: {
 
   return (
     <main className="waiting-table-page">
-      <Link className="waiting-table-back" to={gamePath}>
-        <ArrowLeft size={17} />
-        Leave waiting room
-      </Link>
+      <button
+        className="waiting-table-back"
+        type="button"
+        disabled={isLeaving}
+        onClick={onLeave}
+      >
+        {isLeaving ? (
+          <LoaderCircle className="is-spinning" size={17} />
+        ) : (
+          <ArrowLeft size={17} />
+        )}
+        {isLeaving ? 'Leaving' : 'Leave waiting room'}
+      </button>
 
       <section className="waiting-table-panel">
         <span className="waiting-pulse" aria-hidden="true" />
@@ -74,6 +86,8 @@ function WaitingTable({ gameName, gamePath, tableId }: {
           <LoaderCircle aria-hidden="true" />
           Checking table status
         </div>
+
+        {leaveError && <div className="waiting-leave-error" role="alert">{leaveError}</div>}
       </section>
     </main>
   )
@@ -82,6 +96,7 @@ function WaitingTable({ gameName, gamePath, tableId }: {
 function GameTablePage() {
   const { gameId, tableId } = useParams()
   const game = findGame(gameId)
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [phase, setPhase] = useState<PagePhase>('loading')
   const [loadedState, setLoadedState] = useState<LoadedGameState | null>(null)
@@ -170,6 +185,28 @@ function GameTablePage() {
     }
   }
 
+  async function handleLeaveWaitingTable(
+    tableIdToLeave: string,
+    userId: string,
+    destination: string,
+  ) {
+    setActionPending(true)
+    setActionError(null)
+
+    try {
+      await leaveTable(tableIdToLeave, userId)
+      navigate(destination)
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error
+      }
+
+      setActionError(error.message)
+    } finally {
+      setActionPending(false)
+    }
+  }
+
   if (!game) {
     return (
       <TableMessage
@@ -216,8 +253,14 @@ function GameTablePage() {
     return (
       <WaitingTable
         gameName={game.name}
-        gamePath={`/games/${game.id}`}
         tableId={tableId}
+        isLeaving={actionPending}
+        leaveError={actionError}
+        onLeave={() => void handleLeaveWaitingTable(
+          tableId,
+          user.userId,
+          `/games/${game.id}`,
+        )}
       />
     )
   }
