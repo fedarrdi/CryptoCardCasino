@@ -1,13 +1,8 @@
 import type { BackendGameType } from '../data/games.ts'
-import { apiRequest } from './client.ts'
+import { apiRequest, apiRequestWithoutResponse } from './client.ts'
 
 export type CreateTableResponse = {
   tableId: string
-}
-
-export type JoinTableResponse = {
-  userId: string
-  name: string
 }
 
 export type TableStatus = 'WAITING' | 'IN_GAME' | 'CLOSED'
@@ -37,12 +32,11 @@ export function createTable(
   })
 }
 
-export function joinTable(tableId: string, userId: string): Promise<JoinTableResponse> {
-  return apiRequest<JoinTableResponse>(`/api/tables/${encodeURIComponent(tableId)}/join`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+export function joinTable(tableId: string, userId: string): Promise<void> {
+  return apiRequestWithoutResponse(
+    `/api/tables/${encodeURIComponent(tableId)}/users/${encodeURIComponent(userId)}`,
+    {
+      method: 'PUT',
     },
-    body: JSON.stringify({ userId }),
-  })
+  )
 }

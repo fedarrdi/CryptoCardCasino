@@ -15,7 +15,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+async function request(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(path, init)
 
   if (!response.ok) {
@@ -23,7 +23,19 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     throw new ApiRequestError(response.status, errorBody)
   }
 
+  return response
+}
+
+export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await request(path, init)
   return response.json() as Promise<T>
+}
+
+export async function apiRequestWithoutResponse(
+  path: string,
+  init?: RequestInit,
+): Promise<void> {
+  await request(path, init)
 }
 
 export function isGameWaitingError(error: unknown): boolean {
