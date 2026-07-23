@@ -31,7 +31,7 @@ public final class TableService
         return table.getId();
     }
 
-    public User joinTable(UUID tableId, UUID userId)
+    public void joinTable(UUID tableId, UUID userId)
     {
         Table table = getTable(tableId);
         User user = userService.getUser(userId);
@@ -45,8 +45,16 @@ public final class TableService
                 table.startGame();
             }
         }
+    }
 
-        return user;
+    public void leaveTable(UUID tableId, UUID userId)
+    {
+        Table table = getTable(tableId);
+
+        synchronized (table)
+        {
+            table.removeUser(userId);
+        }
     }
 
     public List<GetTableResponse> getAllTables()

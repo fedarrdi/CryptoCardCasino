@@ -5,14 +5,14 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import com.raretable.casino.user.User;
 
 import jakarta.validation.Valid;
 
@@ -38,14 +38,24 @@ public final class TableController
         return ResponseEntity.created(URI.create("/api/tables/" + tableId)).body(response);
     }
 
-    @PostMapping("/{tableId}/join")
-    public JoinTableResponse joinTable(
+    @PutMapping("/{tableId}/users/{userId}")
+    public ResponseEntity<Void> joinTable(
         @PathVariable UUID tableId,
-        @Valid @RequestBody JoinTableRequest request
+        @PathVariable UUID userId
     )
     {
-        User user = tableService.joinTable(tableId, request.userId());
-        return new JoinTableResponse(user.getUniqueId(), user.getName());
+        tableService.joinTable(tableId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{tableId}/users/{userId}")
+    public ResponseEntity<Void> leaveTable(
+        @PathVariable UUID tableId,
+        @PathVariable UUID userId
+    )
+    {
+        tableService.leaveTable(tableId, userId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/get-all-tables")
