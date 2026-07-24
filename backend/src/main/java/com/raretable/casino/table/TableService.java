@@ -62,11 +62,34 @@ public final class TableService
         synchronized (table)
         {
             requireRegisteredTable(tableId, table);
-            table.removeUser(userId);
 
-            if (table.isCreator(userId))
+            if (table.getStatus() == TableStatus.WAITING)
             {
-                tables.remove(tableId, table);
+                table.removeUser(userId);
+
+                if (table.isCreator(userId))
+                {
+                    tables.remove(tableId, table);
+                }
+
+                return;
+            }
+
+            if (table.getStatus() != TableStatus.IN_GAME)
+            {
+                throw new IllegalStateException("Cannot leave table while status is " + table.getStatus());
+            }
+
+            Game game = table.getGame();
+
+            synchronized (game)
+            {
+                table.forfeitUser(userId);
+            }
+
+            if (game.isFinished())
+            {
+                table.close();
             }
         }
     }

@@ -49,14 +49,26 @@ public final class Cheat extends Game
         return status == CheatGameStatus.FINISHED;
     }
 
-    public Player removePlayer(Player player)
+    @Override
+    public void forfeitPlayer(UUID playerId)
     {
-        if (player == null)
+        validateGameInProgress();
+        boolean madeLastPlay = lastPlay != null && lastPlay.getPlayerId().equals(playerId);
+
+        removePlayerById(playerId);
+
+        if (madeLastPlay)
         {
-            throw new IllegalArgumentException("Player is required");
+            clearPileAfterBluffCall();
         }
 
-        return removePlayerById(player.getUniqueId());
+        if (getPlayerCount() == 1)
+        {
+            winnerId = getPlayers().get(0).getUniqueId();
+            status = CheatGameStatus.FINISHED;
+            pile.clear();
+            lastPlay = null;
+        }
     }
 
     public void shuffleDeck()

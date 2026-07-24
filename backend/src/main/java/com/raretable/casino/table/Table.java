@@ -83,6 +83,24 @@ public final class Table
             throw new IllegalStateException("Cannot leave table while status is " + status);
         }
 
+        return removeUserById(userId);
+    }
+
+    public User forfeitUser(UUID userId)
+    {
+        if (status != TableStatus.IN_GAME)
+        {
+            throw new IllegalStateException("Cannot forfeit table while status is " + status);
+        }
+
+        User user = getUserById(userId);
+        game.forfeitPlayer(userId);
+        users.remove(user);
+        return user;
+    }
+
+    private User removeUserById(UUID userId)
+    {
         Iterator<User> iterator = users.iterator();
 
         while (iterator.hasNext())
@@ -92,6 +110,24 @@ public final class Table
             if (user.getUniqueId().equals(userId))
             {
                 iterator.remove();
+                return user;
+            }
+        }
+
+        throw new IllegalArgumentException("User not found: " + userId);
+    }
+
+    private User getUserById(UUID userId)
+    {
+        if (userId == null)
+        {
+            throw new IllegalArgumentException("User id is required");
+        }
+
+        for (User user : users)
+        {
+            if (user.getUniqueId().equals(userId))
+            {
                 return user;
             }
         }

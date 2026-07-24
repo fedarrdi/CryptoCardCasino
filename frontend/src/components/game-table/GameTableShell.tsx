@@ -20,6 +20,8 @@ type GameTableShellProps = {
   onCardSelect: ((index: number) => void) | null
   controls: ReactNode
   actionError: string | null
+  leavePending: boolean
+  onLeave: () => void
 }
 
 function GameTableShell({
@@ -37,10 +39,18 @@ function GameTableShell({
   onCardSelect,
   controls,
   actionError,
+  leavePending,
+  onLeave,
 }: GameTableShellProps) {
   return (
     <div className={`game-table-screen table-theme-${game.id}`}>
-      <TableHeader game={game} tableId={tableId} status={status} />
+      <TableHeader
+        game={game}
+        tableId={tableId}
+        status={status}
+        leavePending={leavePending}
+        onLeave={onLeave}
+      />
       <div className="game-table-room">
         <TableArena
           tableId={tableId}

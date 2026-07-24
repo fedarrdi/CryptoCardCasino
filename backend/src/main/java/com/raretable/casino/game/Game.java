@@ -40,6 +40,8 @@ public abstract class Game
 
     public abstract boolean isFinished();
 
+    public abstract void forfeitPlayer(UUID playerId);
+
     protected final List<Player> getPlayers()
     {
         return Collections.unmodifiableList(players);

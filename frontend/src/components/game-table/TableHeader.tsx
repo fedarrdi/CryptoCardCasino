@@ -1,4 +1,4 @@
-import { ArrowLeft, Diamond } from 'lucide-react'
+import { ArrowLeft, Diamond, LoaderCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Game } from '../../data/games.ts'
 
@@ -6,20 +6,30 @@ type TableHeaderProps = {
   game: Game
   tableId: string
   status: string
+  leavePending: boolean
+  onLeave: () => void
 }
 
-function TableHeader({ game, tableId, status }: TableHeaderProps) {
+function TableHeader({
+  game,
+  tableId,
+  status,
+  leavePending,
+  onLeave,
+}: TableHeaderProps) {
   return (
     <header className="game-table-topbar">
       <div className="game-table-topbar-left">
-        <Link
-          className="game-table-icon-button"
-          to={`/games/${game.id}`}
+        <button
+          className="game-table-icon-button game-table-leave-button"
+          type="button"
+          disabled={leavePending}
+          onClick={onLeave}
           aria-label={`Leave table and return to ${game.name}`}
           title="Leave table"
         >
-          <ArrowLeft />
-        </Link>
+          {leavePending ? <LoaderCircle className="is-spinning" /> : <ArrowLeft />}
+        </button>
 
         <Link className="game-table-brand" to="/" aria-label="RareTable home">
           <span className="game-table-brand-mark" aria-hidden="true">

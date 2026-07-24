@@ -17,6 +17,7 @@ type TagoTableViewProps = {
   actionPending: boolean
   actionError: string | null
   performAction: PerformGameAction
+  onLeave: () => void
 }
 
 const STATUS_LABELS: Record<TagoGameStatus, string> = {
@@ -36,6 +37,7 @@ function TagoTableView({
   actionPending,
   actionError,
   performAction,
+  onLeave,
 }: TagoTableViewProps) {
   const isFinished = state.status === 'FINISHED'
   const isCurrentPlayer = state.currentPlayerId === userId
@@ -187,6 +189,8 @@ function TagoTableView({
       onCardSelect={null}
       controls={controls}
       actionError={actionError}
+      leavePending={actionPending}
+      onLeave={onLeave}
     />
   )
 }

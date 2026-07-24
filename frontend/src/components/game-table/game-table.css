@@ -87,10 +87,20 @@
   transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
 }
 
-.game-table-icon-button:hover {
+.game-table-icon-button:hover:not(:disabled) {
   border-color: #555d56;
   background: #191d1a;
   color: #f4f3ee;
+}
+
+.game-table-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.game-table-leave-button:hover:not(:disabled) {
+  border-color: #7c3f3a;
+  color: #ff8a7f;
 }
 
 .game-table-icon-button svg {

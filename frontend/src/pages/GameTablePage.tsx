@@ -194,7 +194,7 @@ function GameTablePage() {
     }
   }
 
-  async function handleLeaveWaitingTable(
+  async function handleLeaveTable(
     tableIdToLeave: string,
     userId: string,
     destination: string,
@@ -265,7 +265,7 @@ function GameTablePage() {
         tableId={tableId}
         isLeaving={actionPending}
         leaveError={actionError}
-        onLeave={() => void handleLeaveWaitingTable(
+        onLeave={() => void handleLeaveTable(
           tableId,
           user.userId,
           `/games/${game.id}`,
@@ -293,6 +293,26 @@ function GameTablePage() {
     throw new Error('Ready table is missing its game state')
   }
 
+  const gameFinished = loadedState.state.status === 'FINISHED'
+  const gameLobbyPath = `/games/${game.id}`
+  const activeTableId = tableId
+  const activeUserId = user.userId
+
+  function handleExitGame() {
+    if (gameFinished) {
+      navigate(gameLobbyPath)
+      return
+    }
+
+    const leaveConfirmed = window.confirm(
+      'Leave this game? You will forfeit your seat and cannot rejoin this table.',
+    )
+
+    if (leaveConfirmed) {
+      void handleLeaveTable(activeTableId, activeUserId, gameLobbyPath)
+    }
+  }
+
   switch (loadedState.gameId) {
     case 'cheat':
       return (
@@ -304,6 +324,7 @@ function GameTablePage() {
           actionPending={actionPending}
           actionError={actionError}
           performAction={performAction}
+          onLeave={handleExitGame}
         />
       )
     case 'tago':
@@ -316,6 +337,7 @@ function GameTablePage() {
           actionPending={actionPending}
           actionError={actionError}
           performAction={performAction}
+          onLeave={handleExitGame}
         />
       )
     case 'tien-len':
@@ -328,6 +350,7 @@ function GameTablePage() {
           actionPending={actionPending}
           actionError={actionError}
           performAction={performAction}
+          onLeave={handleExitGame}
         />
       )
   }

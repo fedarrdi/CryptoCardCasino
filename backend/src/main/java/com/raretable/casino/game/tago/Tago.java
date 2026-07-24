@@ -74,6 +74,46 @@ public final class Tago extends Game
         return status == TagoGameStatus.FINISHED;
     }
 
+    @Override
+    public void forfeitPlayer(UUID playerId)
+    {
+        validatePlayerActionStatus();
+        getPlayerById(playerId);
+
+        if (foldedPlayerIds.contains(playerId))
+        {
+            return;
+        }
+
+        boolean wasCurrentPlayer = isPlayerTurn(playerId);
+        foldedPlayerIds.add(playerId);
+        playersActedThisRound.remove(playerId);
+
+        if (getActivePlayerCount() == 1)
+        {
+            finishWithLastActivePlayer();
+            return;
+        }
+
+        if (!wasCurrentPlayer)
+        {
+            if (status != TagoGameStatus.POINT_VALUE_SELECTION && allActivePlayersActed())
+            {
+                advanceBettingRound();
+            }
+
+            return;
+        }
+
+        if (status == TagoGameStatus.POINT_VALUE_SELECTION)
+        {
+            moveToNextActivePlayer();
+            return;
+        }
+
+        advanceAfterBettingAction();
+    }
+
     private void dealCards()
     {
         if (status != TagoGameStatus.NOT_STARTED)

@@ -67,6 +67,38 @@ public final class TienLen extends Game
         return status == TienLenGameStatus.FINISHED;
     }
 
+    @Override
+    public void forfeitPlayer(UUID playerId)
+    {
+        validateGameInProgress();
+        boolean wasCurrentPlayer = isPlayerTurn(playerId);
+        boolean madeLastPlay = playerId.equals(lastPlayerId);
+
+        removePlayerById(playerId);
+        passedPlayerIds.remove(playerId);
+
+        if (getPlayerCount() == 1)
+        {
+            winnerId = getPlayers().get(0).getUniqueId();
+            status = TienLenGameStatus.FINISHED;
+            passedPlayerIds.clear();
+            return;
+        }
+
+        if (madeLastPlay)
+        {
+            lastPlay = null;
+            lastPlayerId = null;
+            passedPlayerIds.clear();
+            return;
+        }
+
+        if (wasCurrentPlayer)
+        {
+            ensureCurrentPlayerCanRespond();
+        }
+    }
+
     private void dealCards()
     {
         if (status != TienLenGameStatus.NOT_STARTED)
@@ -212,6 +244,28 @@ public final class TienLen extends Game
         }
 
         throw new IllegalStateException("No player can respond");
+    }
+
+    private void ensureCurrentPlayerCanRespond()
+    {
+        if (lastPlay == null)
+        {
+            return;
+        }
+
+        for (int checkedPlayers = 0; checkedPlayers < getPlayerCount(); checkedPlayers++)
+        {
+            UUID currentPlayerId = getCurrentPlayer().getUniqueId();
+
+            if (!currentPlayerId.equals(lastPlayerId) && !passedPlayerIds.contains(currentPlayerId))
+            {
+                return;
+            }
+
+            moveToNextTurn();
+        }
+
+        startNewTrickFromLastPlayer();
     }
 
     private boolean hasPlayerWhoCanRespond()

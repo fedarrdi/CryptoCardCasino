@@ -19,6 +19,7 @@ type TienLenTableViewProps = {
   actionPending: boolean
   actionError: string | null
   performAction: PerformGameAction
+  onLeave: () => void
 }
 
 function TienLenTableView({
@@ -29,6 +30,7 @@ function TienLenTableView({
   actionPending,
   actionError,
   performAction,
+  onLeave,
 }: TienLenTableViewProps) {
   const [selectedCardIndexes, setSelectedCardIndexes] = useState<Set<number>>(new Set())
   const [combinationType, setCombinationType] = useState<TienLenCombinationType>('SINGLE')
@@ -154,6 +156,8 @@ function TienLenTableView({
       onCardSelect={isCurrentPlayer && !actionPending ? toggleCard : null}
       controls={controls}
       actionError={actionError}
+      leavePending={actionPending}
+      onLeave={onLeave}
     />
   )
 }

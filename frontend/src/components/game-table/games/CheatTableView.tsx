@@ -14,6 +14,7 @@ type CheatTableViewProps = {
   actionPending: boolean
   actionError: string | null
   performAction: PerformGameAction
+  onLeave: () => void
 }
 
 function CheatTableView({
@@ -24,6 +25,7 @@ function CheatTableView({
   actionPending,
   actionError,
   performAction,
+  onLeave,
 }: CheatTableViewProps) {
   const [selectedCardIndexes, setSelectedCardIndexes] = useState<Set<number>>(new Set())
   const [declaredRank, setDeclaredRank] = useState<Rank>('ACE')
@@ -147,6 +149,8 @@ function CheatTableView({
       onCardSelect={isCurrentPlayer && !actionPending ? toggleCard : null}
       controls={controls}
       actionError={actionError}
+      leavePending={actionPending}
+      onLeave={onLeave}
     />
   )
 }

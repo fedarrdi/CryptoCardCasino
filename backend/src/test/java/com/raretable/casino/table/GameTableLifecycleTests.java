@@ -1,6 +1,7 @@
 package com.raretable.casino.table;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Instant;
@@ -15,6 +16,7 @@ import com.raretable.casino.game.cheat.Cheat;
 import com.raretable.casino.game.cheat.CheatGameService;
 import com.raretable.casino.game.tago.Tago;
 import com.raretable.casino.game.tago.TagoGameService;
+import com.raretable.casino.game.tienlen.TienLen;
 import com.raretable.casino.game.tienlen.TienLenGameService;
 import com.raretable.casino.game.tienlen.TienLenGameState;
 import com.raretable.casino.game.tienlen.TienLenCombinationType;
@@ -105,6 +107,89 @@ class GameTableLifecycleTests
         assertThrows(
             TableNotFoundException.class,
             () -> setup.tableService().getTable(setup.tableId())
+        );
+    }
+
+    @Test
+    void leavingTwoPlayerCheatAwardsRemainingPlayerAndClosesTable()
+    {
+        assertTwoPlayerForfeitClosesTable(GameType.CHEAT);
+    }
+
+    @Test
+    void leavingTwoPlayerTagoAwardsRemainingPlayerAndClosesTable()
+    {
+        assertTwoPlayerForfeitClosesTable(GameType.TAGO);
+    }
+
+    @Test
+    void leavingTwoPlayerTienLenAwardsRemainingPlayerAndClosesTable()
+    {
+        assertTwoPlayerForfeitClosesTable(GameType.TIEN_LEN);
+    }
+
+    @Test
+    void forfeitedSeatCannotBeRejoinedOrReplaced()
+    {
+        UserService userService = new UserService();
+        User creator = userService.login("Creator");
+        User secondPlayer = userService.login("Second player");
+        User thirdPlayer = userService.login("Third player");
+        User replacement = userService.login("Replacement");
+        TableService tableService = new TableService(userService);
+        UUID tableId = tableService.createTable(GameType.CHEAT, 3, creator.getUniqueId());
+
+        tableService.joinTable(tableId, secondPlayer.getUniqueId());
+        tableService.joinTable(tableId, thirdPlayer.getUniqueId());
+        tableService.leaveTable(tableId, creator.getUniqueId());
+
+        Table table = tableService.getTable(tableId);
+
+        assertEquals(TableStatus.IN_GAME, table.getStatus());
+        assertEquals(2, table.getUsers().size());
+        assertFalse(table.getGame().isFinished());
+        assertThrows(
+            IllegalStateException.class,
+            () -> tableService.joinTable(tableId, creator.getUniqueId())
+        );
+        assertThrows(
+            IllegalStateException.class,
+            () -> tableService.joinTable(tableId, replacement.getUniqueId())
+        );
+    }
+
+    private void assertTwoPlayerForfeitClosesTable(GameType gameType)
+    {
+        GameSetup setup = createStartedGame(gameType);
+        UUID leavingPlayerId = setup.users().get(0).getUniqueId();
+        UUID remainingPlayerId = setup.users().get(1).getUniqueId();
+
+        setup.tableService().leaveTable(setup.tableId(), leavingPlayerId);
+
+        Table table = setup.tableService().getTable(setup.tableId());
+
+        assertEquals(TableStatus.CLOSED, table.getStatus());
+        assertEquals(List.of(setup.users().get(1)), table.getUsers());
+
+        switch (gameType)
+        {
+            case CHEAT -> assertEquals(
+                remainingPlayerId,
+                ((Cheat) table.getGame()).getWinnerId()
+            );
+            case TAGO -> assertEquals(
+                List.of(remainingPlayerId),
+                ((Tago) table.getGame()).getWinnerIds()
+            );
+            case TIEN_LEN -> assertEquals(
+                remainingPlayerId,
+                ((TienLen) table.getGame()).getWinnerId()
+            );
+        }
+
+        assertThrows(
+            IllegalStateException.class,
+            () -> setup.tableService().joinTable(setup.tableId(), leavingPlayerId)
         );
     }
 
