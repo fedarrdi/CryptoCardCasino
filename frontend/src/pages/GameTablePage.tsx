@@ -97,7 +97,7 @@ function GameTablePage() {
   const { gameId, tableId } = useParams()
   const game = findGame(gameId)
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { status, user } = useAuth()
   const [phase, setPhase] = useState<PagePhase>('loading')
   const [loadedState, setLoadedState] = useState<LoadedGameState | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -111,8 +111,6 @@ function GameTablePage() {
 
     const activeGame = game
     const activeTableId = tableId
-    const activeUser = user
-
     let cancelled = false
     let pollTimer: number | undefined
 
@@ -120,7 +118,7 @@ function GameTablePage() {
       let continuePolling = true
 
       try {
-        const nextState = await getGameState(activeGame.id, activeTableId, activeUser.userId)
+        const nextState = await getGameState(activeGame.id, activeTableId)
         continuePolling = nextState.state.status !== 'FINISHED'
 
         if (!cancelled) {
@@ -194,16 +192,12 @@ function GameTablePage() {
     }
   }
 
-  async function handleLeaveTable(
-    tableIdToLeave: string,
-    userId: string,
-    destination: string,
-  ) {
+  async function handleLeaveTable(tableIdToLeave: string, destination: string) {
     setActionPending(true)
     setActionError(null)
 
     try {
-      await leaveTable(tableIdToLeave, userId)
+      await leaveTable(tableIdToLeave)
       navigate(destination)
     } catch (error) {
       if (!(error instanceof Error)) {
@@ -238,11 +232,20 @@ function GameTablePage() {
     )
   }
 
+  if (status === 'checking') {
+    return (
+      <main className="game-table-loading">
+        <LoaderCircle aria-hidden="true" />
+        <span>Checking wallet session</span>
+      </main>
+    )
+  }
+
   if (user === null) {
     return (
       <TableMessage
-        title="Test login required"
-        message="Sign in before opening a game table."
+        title="Wallet connection required"
+        message="Connect your wallet before opening a game table."
         linkLabel={`Return to ${game.name}`}
         to={`/games/${game.id}`}
       />
@@ -267,7 +270,6 @@ function GameTablePage() {
         leaveError={actionError}
         onLeave={() => void handleLeaveTable(
           tableId,
-          user.userId,
           `/games/${game.id}`,
         )}
       />
@@ -296,7 +298,6 @@ function GameTablePage() {
   const gameFinished = loadedState.state.status === 'FINISHED'
   const gameLobbyPath = `/games/${game.id}`
   const activeTableId = tableId
-  const activeUserId = user.userId
 
   function handleExitGame() {
     if (gameFinished) {
@@ -309,7 +310,7 @@ function GameTablePage() {
     )
 
     if (leaveConfirmed) {
-      void handleLeaveTable(activeTableId, activeUserId, gameLobbyPath)
+      void handleLeaveTable(activeTableId, gameLobbyPath)
     }
   }
 

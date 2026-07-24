@@ -67,7 +67,7 @@
 
 ### Frontend Contract And End-To-End Testing
 
-- [ ] Replace the frontend test login and client-supplied user UUIDs with the SIWE session flow.
+- [x] Replace the frontend test login and client-supplied user UUIDs with the SIWE session flow.
   - Request a challenge, sign the returned message, create the session, and fetch the CSRF token.
   - Send the CSRF header on table and game mutations.
   - Use the authenticated endpoints that no longer contain `/users/{userId}`.

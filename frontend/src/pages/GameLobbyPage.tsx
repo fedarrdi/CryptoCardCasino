@@ -6,6 +6,7 @@ import {
   Plus,
   RefreshCw,
   Users,
+  Wallet,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
@@ -23,7 +24,7 @@ type PendingAction =
   | { type: 'join'; tableId: string }
   | null
 
-type TableListPhase = 'loading' | 'ready' | 'error'
+type TableListPhase = 'loading' | 'ready' | 'error' | 'signed-out'
 
 const TABLE_STATUS_LABELS: Record<TableStatus, string> = {
   WAITING: 'Open',
@@ -52,7 +53,7 @@ function GameLobbyPage() {
   const game = findGame(gameId)
   const location = useLocation()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { status, user } = useAuth()
   const [playersToStart, setPlayersToStart] = useState(2)
   const [tables, setTables] = useState<TableSummary[]>([])
   const [tableListPhase, setTableListPhase] = useState<TableListPhase>('loading')
@@ -69,6 +70,13 @@ function GameLobbyPage() {
 
   useEffect(() => {
     if (!game) {
+      return
+    }
+
+    if (user === null) {
+      setTables([])
+      setTableListError(null)
+      setTableListPhase(status === 'checking' ? 'loading' : 'signed-out')
       return
     }
 
@@ -121,7 +129,7 @@ function GameLobbyPage() {
         window.clearTimeout(pollingTimer)
       }
     }
-  }, [game, refreshRequest])
+  }, [game, refreshRequest, status, user])
 
   if (!game) {
     return (
@@ -149,11 +157,7 @@ function GameLobbyPage() {
     setActionError(null)
 
     try {
-      const createdTable = await createTable(
-        selectedGame.backendType,
-        playersToStart,
-        user.userId,
-      )
+      const createdTable = await createTable(selectedGame.backendType, playersToStart)
       navigate(`/games/${selectedGame.id}/tables/${createdTable.tableId}`)
     } catch (caughtError) {
       if (!(caughtError instanceof Error)) {
@@ -175,7 +179,7 @@ function GameLobbyPage() {
     setActionError(null)
 
     try {
-      await joinTable(tableId, user.userId)
+      await joinTable(tableId)
       navigate(`/games/${selectedGame.id}/tables/${tableId}`)
     } catch (caughtError) {
       if (!(caughtError instanceof Error)) {
@@ -277,7 +281,9 @@ function GameLobbyPage() {
           </div>
         </div>
 
-        {!user && <div className="table-login-notice">Use Test login to create or join a table.</div>}
+        {status === 'unauthenticated' && (
+          <div className="table-login-notice">Connect your wallet to view and join tables.</div>
+        )}
         {navigationState?.tableClosedMessage && (
           <div className="table-lobby-notice" role="status">
             {navigationState.tableClosedMessage}
@@ -289,6 +295,14 @@ function GameLobbyPage() {
             <div className="table-list-state">
               <LoaderCircle className="is-spinning" aria-hidden="true" />
               <span>Loading tables</span>
+            </div>
+          )}
+
+          {tableListPhase === 'signed-out' && (
+            <div className="table-list-state is-empty">
+              <Wallet aria-hidden="true" />
+              <strong>Wallet connection required</strong>
+              <span>Connect your wallet to enter the cardroom.</span>
             </div>
           )}
 

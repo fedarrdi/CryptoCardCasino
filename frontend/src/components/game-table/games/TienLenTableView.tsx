@@ -66,7 +66,7 @@ function TienLenTableView({
     const cardIndexes = [...selectedCardIndexes].sort((left, right) => left - right)
     const succeeded = await performAction(async () => ({
       gameId: 'tien-len',
-      state: await playTienLenCards(tableId, userId, cardIndexes, combinationType),
+      state: await playTienLenCards(tableId, cardIndexes, combinationType),
     }))
 
     if (succeeded) {
@@ -77,7 +77,7 @@ function TienLenTableView({
   async function handlePass() {
     const succeeded = await performAction(async () => ({
       gameId: 'tien-len',
-      state: await passTienLen(tableId, userId),
+      state: await passTienLen(tableId),
     }))
 
     if (succeeded) {

@@ -61,7 +61,7 @@ function CheatTableView({
     const cardIndexes = [...selectedCardIndexes].sort((left, right) => left - right)
     const succeeded = await performAction(async () => ({
       gameId: 'cheat',
-      state: await playCheatCards(tableId, userId, cardIndexes, declaredRank),
+      state: await playCheatCards(tableId, cardIndexes, declaredRank),
     }))
 
     if (succeeded) {
@@ -72,7 +72,7 @@ function CheatTableView({
   async function handleCallBluff() {
     const succeeded = await performAction(async () => ({
       gameId: 'cheat',
-      state: await callCheatBluff(tableId, userId),
+      state: await callCheatBluff(tableId),
     }))
 
     if (succeeded) {

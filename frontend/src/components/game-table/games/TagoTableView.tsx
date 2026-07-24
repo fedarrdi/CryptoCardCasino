@@ -68,21 +68,21 @@ function TagoTableView({
   async function runBettingTurn() {
     await performAction(async () => ({
       gameId: 'tago',
-      state: await completeTagoBettingTurn(tableId, userId),
+      state: await completeTagoBettingTurn(tableId),
     }))
   }
 
   async function runFold() {
     await performAction(async () => ({
       gameId: 'tago',
-      state: await foldTago(tableId, userId),
+      state: await foldTago(tableId),
     }))
   }
 
   async function selectPointValue(value: number) {
     await performAction(async () => ({
       gameId: 'tago',
-      state: await chooseTagoPointValue(tableId, userId, value),
+      state: await chooseTagoPointValue(tableId, value),
     }))
   }
 

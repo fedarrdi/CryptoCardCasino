@@ -132,31 +132,30 @@ export type LoadedGameState =
   | { gameId: 'tago'; state: TagoGameState }
   | { gameId: 'tien-len'; state: TienLenGameState }
 
-function gamePath(tableId: string, endpoint: string, userId: string): string {
-  return `/api/tables/${encodeURIComponent(tableId)}/${endpoint}/users/${encodeURIComponent(userId)}`
+function gamePath(tableId: string, endpoint: string): string {
+  return `/api/tables/${encodeURIComponent(tableId)}/${endpoint}`
 }
 
 export async function getGameState(
   gameId: GameId,
   tableId: string,
-  userId: string,
 ): Promise<LoadedGameState> {
   switch (gameId) {
     case 'cheat':
       return {
         gameId,
-        state: await apiRequest<CheatGameState>(`${gamePath(tableId, 'cheat', userId)}/state`),
+        state: await apiRequest<CheatGameState>(`${gamePath(tableId, 'cheat')}/state`),
       }
     case 'tago':
       return {
         gameId,
-        state: await apiRequest<TagoGameState>(`${gamePath(tableId, 'tago', userId)}/state`),
+        state: await apiRequest<TagoGameState>(`${gamePath(tableId, 'tago')}/state`),
       }
     case 'tien-len':
       return {
         gameId,
         state: await apiRequest<TienLenGameState>(
-          `${gamePath(tableId, 'tien-len', userId)}/state`,
+          `${gamePath(tableId, 'tien-len')}/state`,
         ),
       }
   }
@@ -164,11 +163,10 @@ export async function getGameState(
 
 export function playCheatCards(
   tableId: string,
-  userId: string,
   cardIndexes: number[],
   declaredRank: Rank,
 ): Promise<CheatGameState> {
-  return apiRequest<CheatGameState>(`${gamePath(tableId, 'cheat', userId)}/actions/play`, {
+  return apiRequest<CheatGameState>(`${gamePath(tableId, 'cheat')}/actions/play`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -177,36 +175,32 @@ export function playCheatCards(
   })
 }
 
-export function callCheatBluff(tableId: string, userId: string): Promise<CheatGameState> {
+export function callCheatBluff(tableId: string): Promise<CheatGameState> {
   return apiRequest<CheatGameState>(
-    `${gamePath(tableId, 'cheat', userId)}/actions/call-bluff`,
+    `${gamePath(tableId, 'cheat')}/actions/call-bluff`,
     { method: 'POST' },
   )
 }
 
-export function completeTagoBettingTurn(
-  tableId: string,
-  userId: string,
-): Promise<TagoGameState> {
+export function completeTagoBettingTurn(tableId: string): Promise<TagoGameState> {
   return apiRequest<TagoGameState>(
-    `${gamePath(tableId, 'tago', userId)}/actions/complete-betting-turn`,
+    `${gamePath(tableId, 'tago')}/actions/complete-betting-turn`,
     { method: 'POST' },
   )
 }
 
-export function foldTago(tableId: string, userId: string): Promise<TagoGameState> {
-  return apiRequest<TagoGameState>(`${gamePath(tableId, 'tago', userId)}/actions/fold`, {
+export function foldTago(tableId: string): Promise<TagoGameState> {
+  return apiRequest<TagoGameState>(`${gamePath(tableId, 'tago')}/actions/fold`, {
     method: 'POST',
   })
 }
 
 export function chooseTagoPointValue(
   tableId: string,
-  userId: string,
   value: number,
 ): Promise<TagoGameState> {
   return apiRequest<TagoGameState>(
-    `${gamePath(tableId, 'tago', userId)}/actions/point-value`,
+    `${gamePath(tableId, 'tago')}/actions/point-value`,
     {
       method: 'POST',
       headers: {
@@ -219,12 +213,11 @@ export function chooseTagoPointValue(
 
 export function playTienLenCards(
   tableId: string,
-  userId: string,
   cardIndexes: number[],
   combinationType: TienLenCombinationType,
 ): Promise<TienLenGameState> {
   return apiRequest<TienLenGameState>(
-    `${gamePath(tableId, 'tien-len', userId)}/actions/play`,
+    `${gamePath(tableId, 'tien-len')}/actions/play`,
     {
       method: 'POST',
       headers: {
@@ -235,9 +228,9 @@ export function playTienLenCards(
   )
 }
 
-export function passTienLen(tableId: string, userId: string): Promise<TienLenGameState> {
+export function passTienLen(tableId: string): Promise<TienLenGameState> {
   return apiRequest<TienLenGameState>(
-    `${gamePath(tableId, 'tien-len', userId)}/actions/pass`,
+    `${gamePath(tableId, 'tien-len')}/actions/pass`,
     { method: 'POST' },
   )
 }

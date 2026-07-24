@@ -1,10 +1,13 @@
 import { createContext, useContext } from 'react'
-import type { DevUser } from './devUser.ts'
+import type { AuthenticatedUser } from '../api/auth.ts'
+
+export type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated'
 
 export type AuthContextValue = {
-  user: DevUser | null
-  signIn: (name: string) => Promise<void>
-  signOut: () => void
+  user: AuthenticatedUser | null
+  status: AuthStatus
+  connectWallet: () => Promise<void>
+  signOut: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)

@@ -136,16 +136,21 @@ select:focus-visible {
   background: var(--surface-soft);
 }
 
+.wallet-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .wallet-button.is-connected {
   border-color: rgba(105, 216, 138, 0.38);
   background: #111b13;
 }
 
-.dev-login {
+.wallet-session-control {
   position: relative;
 }
 
-.login-popover {
+.wallet-popover {
   position: absolute;
   z-index: 80;
   top: calc(100% + 10px);
@@ -158,37 +163,22 @@ select:focus-visible {
   box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
 }
 
-.login-form,
-.login-session {
+.wallet-connect-panel,
+.wallet-session {
   display: grid;
   gap: 10px;
 }
 
-.login-form label,
-.login-session > span {
+.wallet-connect-panel > span:first-child,
+.wallet-session > span:first-child {
   color: var(--text-muted);
   font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
 }
 
-.login-form input {
-  width: 100%;
-  height: 40px;
-  padding: 0 11px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  outline: none;
-  background: #0b0d0b;
-  color: var(--text);
-}
-
-.login-form input:focus {
-  border-color: var(--accent);
-}
-
-.login-submit-button,
-.login-secondary-button {
+.wallet-primary-button,
+.wallet-secondary-button {
   display: inline-flex;
   min-height: 38px;
   align-items: center;
@@ -203,27 +193,39 @@ select:focus-visible {
   cursor: pointer;
 }
 
-.login-submit-button:disabled {
+.wallet-primary-button:disabled,
+.wallet-secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-.login-secondary-button {
+.wallet-secondary-button {
   background: var(--surface-raised);
   color: var(--text);
 }
 
-.login-session strong {
+.wallet-connect-panel strong,
+.wallet-session strong {
   font-size: 0.98rem;
 }
 
-.login-session code {
+.wallet-session code {
   overflow-wrap: anywhere;
   color: var(--text-muted);
   font-size: 0.72rem;
 }
 
-.login-error,
+.wallet-capability {
+  width: fit-content;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.wallet-error,
 .form-error {
   color: #ff9a90;
   font-size: 0.76rem;

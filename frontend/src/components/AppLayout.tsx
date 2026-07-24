@@ -1,9 +1,10 @@
-import { type FormEvent, useState } from 'react'
+import { useState } from 'react'
 import {
   Club,
   Diamond,
   Gamepad2,
   LayoutDashboard,
+  LoaderCircle,
   LogOut,
   Menu,
   Spade,
@@ -24,11 +25,10 @@ const GAME_ICONS: Record<GameId, LucideIcon> = {
 
 function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [loginMenuOpen, setLoginMenuOpen] = useState(false)
-  const [loginName, setLoginName] = useState('')
-  const [loginError, setLoginError] = useState<string | null>(null)
-  const [loginIsSubmitting, setLoginIsSubmitting] = useState(false)
-  const { user, signIn, signOut } = useAuth()
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false)
+  const [walletError, setWalletError] = useState<string | null>(null)
+  const [walletIsSubmitting, setWalletIsSubmitting] = useState(false)
+  const { user, status, connectWallet, signOut } = useAuth()
   const location = useLocation()
 
   const closeMobileMenu = () => setMobileMenuOpen(false)
@@ -36,30 +36,46 @@ function AppLayout() {
     location.pathname === '/' &&
     (location.hash === hash || (!location.hash && hash === '#lobby'))
 
-  async function handleLoginSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setLoginError(null)
-    setLoginIsSubmitting(true)
+  async function handleConnectWallet() {
+    setWalletError(null)
+    setWalletIsSubmitting(true)
 
     try {
-      await signIn(loginName)
-      setLoginMenuOpen(false)
-      setLoginName('')
+      await connectWallet()
+      setWalletMenuOpen(false)
     } catch (error) {
       if (!(error instanceof Error)) {
         throw error
       }
 
-      setLoginError(error.message)
+      setWalletError(error.message)
+      setWalletMenuOpen(true)
     } finally {
-      setLoginIsSubmitting(false)
+      setWalletIsSubmitting(false)
     }
   }
 
-  function handleLogout() {
-    signOut()
-    setLoginMenuOpen(false)
+  async function handleLogout() {
+    setWalletError(null)
+    setWalletIsSubmitting(true)
+
+    try {
+      await signOut()
+      setWalletMenuOpen(false)
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error
+      }
+
+      setWalletError(error.message)
+    } finally {
+      setWalletIsSubmitting(false)
+    }
   }
+
+  const shortWalletAddress = user
+    ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
+    : null
 
   return (
     <div className="app-shell">
@@ -81,47 +97,73 @@ function AppLayout() {
         </Link>
 
         <div className="topbar-actions">
-          <div className="dev-login">
+          <div className="wallet-session-control">
             <button
               className={`wallet-button ${user ? 'is-connected' : ''}`}
               type="button"
-              aria-expanded={loginMenuOpen}
-              onClick={() => setLoginMenuOpen((isOpen) => !isOpen)}
+              aria-expanded={walletMenuOpen}
+              disabled={status === 'checking' || walletIsSubmitting}
+              onClick={() => {
+                if (user) {
+                  setWalletMenuOpen((isOpen) => !isOpen)
+                } else {
+                  void handleConnectWallet()
+                }
+              }}
             >
-              {user ? <UserRound size={18} /> : <Wallet size={18} />}
-              <span>{user ? user.name : 'Test login'}</span>
+              {status === 'checking' || walletIsSubmitting ? (
+                <LoaderCircle className="is-spinning" size={18} />
+              ) : user ? (
+                <UserRound size={18} />
+              ) : (
+                <Wallet size={18} />
+              )}
+              <span>
+                {status === 'checking'
+                  ? 'Checking session'
+                  : walletIsSubmitting
+                    ? user
+                      ? 'Disconnecting'
+                      : 'Connecting'
+                    : shortWalletAddress ?? 'Connect wallet'}
+              </span>
             </button>
 
-            {loginMenuOpen && (
-              <div className="login-popover">
+            {walletMenuOpen && (
+              <div className="wallet-popover">
                 {user ? (
-                  <div className="login-session">
+                  <div className="wallet-session">
                     <span>Signed in as</span>
                     <strong>{user.name}</strong>
-                    <code>{user.userId}</code>
-                    <button className="login-secondary-button" type="button" onClick={handleLogout}>
+                    <code>{user.walletAddress}</code>
+                    <span className="wallet-capability">EOA wallet</span>
+                    <button
+                      className="wallet-secondary-button"
+                      type="button"
+                      disabled={walletIsSubmitting}
+                      onClick={() => void handleLogout()}
+                    >
                       <LogOut size={16} />
                       Log out
                     </button>
+                    {walletError && <span className="wallet-error">{walletError}</span>}
                   </div>
                 ) : (
-                  <form className="login-form" onSubmit={handleLoginSubmit}>
-                    <label htmlFor="dev-login-name">Name</label>
-                    <input
-                      id="dev-login-name"
-                      value={loginName}
-                      autoComplete="name"
-                      onChange={(event) => setLoginName(event.target.value)}
-                    />
+                  <div className="wallet-connect-panel">
+                    <span>Wallet connection</span>
+                    <strong>MetaMask</strong>
+                    <span className="wallet-capability">EOA wallets only</span>
                     <button
-                      className="login-submit-button"
-                      type="submit"
-                      disabled={loginIsSubmitting || !loginName.trim()}
+                      className="wallet-primary-button"
+                      type="button"
+                      disabled={walletIsSubmitting}
+                      onClick={() => void handleConnectWallet()}
                     >
-                      {loginIsSubmitting ? 'Creating...' : 'Create user'}
+                      <Wallet size={16} />
+                      {walletIsSubmitting ? 'Connecting' : 'Connect MetaMask'}
                     </button>
-                    {loginError && <span className="login-error">{loginError}</span>}
-                  </form>
+                    {walletError && <span className="wallet-error">{walletError}</span>}
+                  </div>
                 )}
               </div>
             )}
