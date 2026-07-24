@@ -3,6 +3,7 @@ package com.raretable.casino.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static com.raretable.casino.table.TestUserFactory.createWalletUser;
 
 import java.time.Instant;
 import java.util.List;
@@ -132,10 +133,10 @@ class GameTableLifecycleTests
     void forfeitedSeatCannotBeRejoinedOrReplaced()
     {
         UserService userService = new UserService();
-        User creator = userService.login("Creator");
-        User secondPlayer = userService.login("Second player");
-        User thirdPlayer = userService.login("Third player");
-        User replacement = userService.login("Replacement");
+        User creator = createWalletUser(userService, 1);
+        User secondPlayer = createWalletUser(userService, 2);
+        User thirdPlayer = createWalletUser(userService, 3);
+        User replacement = createWalletUser(userService, 4);
         TableService tableService = new TableService(userService);
         UUID tableId = tableService.createTable(GameType.CHEAT, 3, creator.getUniqueId());
 
@@ -196,8 +197,8 @@ class GameTableLifecycleTests
     private GameSetup createStartedGame(GameType gameType)
     {
         UserService userService = new UserService();
-        User creator = userService.login("Creator");
-        User opponent = userService.login("Opponent");
+        User creator = createWalletUser(userService, 1);
+        User opponent = createWalletUser(userService, 2);
         TableService tableService = new TableService(userService);
         UUID tableId = tableService.createTable(gameType, 2, creator.getUniqueId());
 

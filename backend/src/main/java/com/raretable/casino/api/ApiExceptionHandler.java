@@ -6,12 +6,22 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.raretable.casino.auth.WalletAuthenticationException;
 import com.raretable.casino.table.TableNotFoundException;
 import com.raretable.casino.user.UserNotFoundException;
 
 @RestControllerAdvice
 public final class ApiExceptionHandler
 {
+    @ExceptionHandler(WalletAuthenticationException.class)
+    public ResponseEntity<ApiError> handleAuthenticationFailure(
+        WalletAuthenticationException exception
+    )
+    {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(new ApiError("AUTHENTICATION_FAILED", exception.getMessage()));
+    }
+
     @ExceptionHandler({TableNotFoundException.class, UserNotFoundException.class})
     public ResponseEntity<ApiError> handleNotFound(RuntimeException exception)
     {

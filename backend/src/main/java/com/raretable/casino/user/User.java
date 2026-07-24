@@ -1,17 +1,25 @@
 package com.raretable.casino.user;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 public final class User
 {
     private final UUID uniqueId;
+    private final String walletAddress;
     private String name;
 
     public User(String name)
     {
+        this(name, null);
+    }
+
+    User(String name, String walletAddress)
+    {
         validateName(name);
         this.uniqueId = UUID.randomUUID();
+        this.walletAddress = walletAddress;
         this.name = name.trim();
     }
 
@@ -23,6 +31,11 @@ public final class User
     public String getName()
     {
         return name;
+    }
+
+    public Optional<String> getWalletAddress()
+    {
+        return Optional.ofNullable(walletAddress);
     }
 
     public void rename(String name)

@@ -2,6 +2,7 @@ package com.raretable.casino.table;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static com.raretable.casino.table.TestUserFactory.createWalletUser;
 
 import java.util.UUID;
 
@@ -17,8 +18,8 @@ class TableServiceTests
     void deletingCreatorRemovesWaitingTableAndItsPlayers()
     {
         UserService userService = new UserService();
-        User creator = userService.login("Creator");
-        User waitingPlayer = userService.login("Waiting player");
+        User creator = createWalletUser(userService, 1);
+        User waitingPlayer = createWalletUser(userService, 2);
         TableService tableService = new TableService(userService);
         UUID tableId = tableService.createTable(GameType.CHEAT, 3, creator.getUniqueId());
 
@@ -32,8 +33,8 @@ class TableServiceTests
     void nonCreatorLeavingKeepsCreatorAtWaitingTable()
     {
         UserService userService = new UserService();
-        User creator = userService.login("Creator");
-        User waitingPlayer = userService.login("Waiting player");
+        User creator = createWalletUser(userService, 1);
+        User waitingPlayer = createWalletUser(userService, 2);
         TableService tableService = new TableService(userService);
         UUID tableId = tableService.createTable(GameType.CHEAT, 3, creator.getUniqueId());
 
