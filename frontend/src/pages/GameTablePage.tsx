@@ -121,6 +121,7 @@ function GameTablePage() {
 
       try {
         const nextState = await getGameState(activeGame.id, activeTableId, activeUser.userId)
+        continuePolling = nextState.state.status !== 'FINISHED'
 
         if (!cancelled) {
           setLoadedState(nextState)
@@ -137,7 +138,7 @@ function GameTablePage() {
           navigate(`/games/${activeGame.id}`, {
             replace: true,
             state: {
-              tableClosedMessage: 'The table was closed because its creator left.',
+              tableClosedMessage: 'This table is no longer available.',
             },
           })
         } else if (isGameWaitingError(error)) {
