@@ -1,10 +1,14 @@
 package com.raretable.casino.table;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.raretable.casino.game.Game;
@@ -15,6 +19,8 @@ import com.raretable.casino.user.UserService;
 @Service
 public final class TableService
 {
+    private static final Duration CLOSED_TABLE_RETENTION = Duration.ofMinutes(5);
+
     private final Map<UUID, Table> tables;
     private final UserService userService;
 
@@ -78,6 +84,33 @@ public final class TableService
                 table.close();
             }
         }
+    }
+
+    @Scheduled(fixedRate = 1, timeUnit = TimeUnit.MINUTES)
+    public void deleteExpiredClosedTables()
+    {
+        Instant deletionCutoff = Instant.now().minus(CLOSED_TABLE_RETENTION);
+        deleteClosedTablesBefore(deletionCutoff);
+    }
+
+    void deleteClosedTablesBefore(Instant deletionCutoff)
+    {
+        if (deletionCutoff == null)
+        {
+            throw new IllegalArgumentException("Deletion cutoff is required");
+        }
+
+        tables.forEach((tableId, table) ->
+        {
+            synchronized (table)
+            {
+                if (table.getStatus() == TableStatus.CLOSED
+                    && !table.getClosedAt().isAfter(deletionCutoff))
+                {
+                    tables.remove(tableId, table);
+                }
+            }
+        });
     }
 
     public List<GetTableResponse> getAllTables()

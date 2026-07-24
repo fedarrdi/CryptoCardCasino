@@ -1,7 +1,9 @@
 package com.raretable.casino.table;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -81,6 +83,29 @@ class GameTableLifecycleTests
         }
 
         assertEquals(TableStatus.CLOSED, setup.tableService().getTable(setup.tableId()).getStatus());
+    }
+
+    @Test
+    void deletesOnlyClosedTablesThatReachedTheRetentionCutoff()
+    {
+        GameSetup setup = createStartedGame(GameType.TAGO);
+        Table table = setup.tableService().getTable(setup.tableId());
+        Tago game = (Tago) table.getGame();
+        TagoGameService gameService = new TagoGameService(setup.tableService());
+
+        gameService.fold(setup.tableId(), game.getCurrentPlayerId());
+
+        Instant closedAt = table.getClosedAt();
+        setup.tableService().deleteClosedTablesBefore(closedAt.minusNanos(1));
+
+        assertEquals(table, setup.tableService().getTable(setup.tableId()));
+
+        setup.tableService().deleteClosedTablesBefore(closedAt);
+
+        assertThrows(
+            TableNotFoundException.class,
+            () -> setup.tableService().getTable(setup.tableId())
+        );
     }
 
     private GameSetup createStartedGame(GameType gameType)

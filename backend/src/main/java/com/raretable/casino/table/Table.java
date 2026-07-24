@@ -1,5 +1,6 @@
 package com.raretable.casino.table;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -22,6 +23,7 @@ public final class Table
 
     private Game game;
     private TableStatus status;
+    private Instant closedAt;
 
     public Table(GameType gameType, int playersToStart, User creator)
     {
@@ -130,6 +132,7 @@ public final class Table
             throw new IllegalStateException("Cannot close table before the game finishes");
         }
 
+        closedAt = Instant.now();
         status = TableStatus.CLOSED;
     }
 
@@ -196,6 +199,16 @@ public final class Table
     public TableStatus getStatus()
     {
         return status;
+    }
+
+    public Instant getClosedAt()
+    {
+        if (status != TableStatus.CLOSED)
+        {
+            throw new IllegalStateException("Table has not been closed");
+        }
+
+        return closedAt;
     }
 
     public int getPlayersToStart()
