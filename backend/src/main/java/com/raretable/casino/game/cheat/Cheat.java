@@ -16,9 +16,6 @@ import com.raretable.casino.user.User;
 
 public final class Cheat extends Game
 {
-    public static final int MIN_PLAYERS = 2;
-    public static final int MAX_PLAYERS = 6;
-
     private static final int CARDS_PER_PLAYER = 8;
 
     private final List<Card> deck;
@@ -29,7 +26,7 @@ public final class Cheat extends Game
 
     public Cheat(List<User> users)
     {
-        super(validateUsers(users));
+        super(users);
         this.pile = new ArrayList<>();
         this.deck = createDeck(getPlayerCount());
         dealCards();
@@ -302,18 +299,4 @@ public final class Cheat extends Game
         }
     }
 
-    private static List<User> validateUsers(List<User> users)
-    {
-        if (users == null)
-        {
-            throw new IllegalArgumentException("Users are required");
-        }
-
-        if (users.size() < MIN_PLAYERS || users.size() > MAX_PLAYERS)
-        {
-            throw new IllegalArgumentException("Cheat needs between 2 and 6 players");
-        }
-
-        return users;
-    }
 }

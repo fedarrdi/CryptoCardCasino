@@ -20,9 +20,6 @@ import com.raretable.casino.user.User;
 
 public final class TienLen extends Game
 {
-    public static final int MIN_PLAYERS = 2;
-    public static final int MAX_PLAYERS = 4;
-
     private static final int CARDS_PER_PLAYER = 13;
 
     private final List<Card> deck;
@@ -41,7 +38,7 @@ public final class TienLen extends Game
 
     public TienLen(List<User> users, RandomGenerator random)
     {
-        super(validateUsers(users));
+        super(users);
 
         if (random == null)
         {
@@ -377,18 +374,4 @@ public final class TienLen extends Game
         return cards;
     }
 
-    private static List<User> validateUsers(List<User> users)
-    {
-        if (users == null)
-        {
-            throw new IllegalArgumentException("Users are required");
-        }
-
-        if (users.size() < MIN_PLAYERS || users.size() > MAX_PLAYERS)
-        {
-            throw new IllegalArgumentException("Tien Len needs between 2 and 4 players");
-        }
-
-        return users;
-    }
 }

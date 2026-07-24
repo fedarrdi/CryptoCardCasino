@@ -102,15 +102,6 @@ class TagoTests
         assertEquals(0.5, game.getPointValue());
     }
 
-    @Test
-    void rejectsPlayerCountsOutsideTheOfficialLimits()
-    {
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> new Tago(List.of(new User("Solo")), new Random(1))
-        );
-    }
-
     private void completeCurrentRound(Tago game, TagoGameStatus round)
     {
         while (game.getStatus() == round)

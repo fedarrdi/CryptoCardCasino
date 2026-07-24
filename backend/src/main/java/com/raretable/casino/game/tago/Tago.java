@@ -18,9 +18,6 @@ import com.raretable.casino.user.User;
 
 public final class Tago extends Game
 {
-    public static final int MIN_PLAYERS = 2;
-    public static final int MAX_PLAYERS = 8;
-
     private static final int CARDS_PER_HAND = 3;
 
     private final UUID firstPlayerId;
@@ -43,7 +40,7 @@ public final class Tago extends Game
 
     public Tago(List<User> users, RandomGenerator random)
     {
-        super(validateUsers(users));
+        super(users);
 
         if (random == null)
         {
@@ -600,18 +597,4 @@ public final class Tago extends Game
         }
     }
 
-    private static List<User> validateUsers(List<User> users)
-    {
-        if (users == null)
-        {
-            throw new IllegalArgumentException("Users are required");
-        }
-
-        if (users.size() < MIN_PLAYERS || users.size() > MAX_PLAYERS)
-        {
-            throw new IllegalArgumentException("TAGO needs between 2 and 8 players");
-        }
-
-        return users;
-    }
 }

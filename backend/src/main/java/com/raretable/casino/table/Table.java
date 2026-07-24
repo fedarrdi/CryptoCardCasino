@@ -37,7 +37,7 @@ public final class Table
             throw new IllegalArgumentException("Table creator is required");
         }
 
-        validatePlayerCount(gameType, playersToStart);
+        gameType.validatePlayerCount(playersToStart);
 
         this.id = UUID.randomUUID();
         this.creatorUserId = creator.getUniqueId();
@@ -180,46 +180,6 @@ public final class Table
             case TAGO -> new Tago(users);
             case TIEN_LEN -> new TienLen(users);
         };
-    }
-
-    private static void validatePlayerCount(GameType gameType, int playerCount)
-    {
-        switch (gameType)
-        {
-            case CHEAT -> validatePlayerCount(
-                playerCount,
-                Cheat.MIN_PLAYERS,
-                Cheat.MAX_PLAYERS,
-                "Cheat"
-            );
-            case TAGO -> validatePlayerCount(
-                playerCount,
-                Tago.MIN_PLAYERS,
-                Tago.MAX_PLAYERS,
-                "TAGO"
-            );
-            case TIEN_LEN -> validatePlayerCount(
-                playerCount,
-                TienLen.MIN_PLAYERS,
-                TienLen.MAX_PLAYERS,
-                "Tien Len"
-            );
-        }
-    }
-
-    private static void validatePlayerCount(
-        int playerCount,
-        int minimumPlayers,
-        int maximumPlayers,
-        String gameName
-    )
-    {
-        if (playerCount < minimumPlayers || playerCount > maximumPlayers)
-        {
-            throw new IllegalArgumentException(
-                gameName + " needs between " + minimumPlayers + " and " + maximumPlayers + " players"
-            );
-        }
     }
 
     public UUID getId()

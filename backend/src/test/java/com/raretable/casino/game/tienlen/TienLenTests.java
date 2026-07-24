@@ -36,29 +36,6 @@ class TienLenTests
     }
 
     @Test
-    void rejectsPlayerCountsOutsideTheAllowedRange()
-    {
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> new TienLen(List.of(new User("Solo")), new Random(1))
-        );
-
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> new TienLen(
-                List.of(
-                    new User("Ada"),
-                    new User("Linus"),
-                    new User("Grace"),
-                    new User("Ken"),
-                    new User("Barbara")
-                ),
-                new Random(1)
-            )
-        );
-    }
-
-    @Test
     void onlyCurrentPlayerCanPlay()
     {
         List<User> users = List.of(new User("Ada"), new User("Linus"));

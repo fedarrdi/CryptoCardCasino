@@ -15,6 +15,39 @@ import com.raretable.casino.user.UserService;
 class TableServiceTests
 {
     @Test
+    void rejectsPlayerCountsOutsideEachGamesLimits()
+    {
+        UserService userService = new UserService();
+        User creator = createWalletUser(userService, 1);
+        TableService tableService = new TableService(userService);
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> tableService.createTable(GameType.CHEAT, 1, creator.getUniqueId())
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> tableService.createTable(GameType.CHEAT, 7, creator.getUniqueId())
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> tableService.createTable(GameType.TAGO, 1, creator.getUniqueId())
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> tableService.createTable(GameType.TAGO, 9, creator.getUniqueId())
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> tableService.createTable(GameType.TIEN_LEN, 1, creator.getUniqueId())
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> tableService.createTable(GameType.TIEN_LEN, 5, creator.getUniqueId())
+        );
+    }
+
+    @Test
     void deletingCreatorRemovesWaitingTableAndItsPlayers()
     {
         UserService userService = new UserService();
