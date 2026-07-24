@@ -69,12 +69,11 @@ public final class WalletAuthService
 
     public User verify(String nonce, String signature)
     {
-        LoginChallenge challenge = challengeStore.require(nonce);
+        LoginChallenge challenge = challengeStore.take(nonce);
         Instant now = clock.instant();
 
         if (!challenge.expiresAt().isAfter(now))
         {
-            challengeStore.remove(challenge);
             throw new WalletAuthenticationException("Login challenge has expired");
         }
 
@@ -88,7 +87,6 @@ public final class WalletAuthService
             throw new WalletAuthenticationException("Signature does not match the requested wallet");
         }
 
-        challengeStore.consume(challenge);
         return userService.findOrCreateByWalletAddress(challenge.walletAddress());
     }
 }

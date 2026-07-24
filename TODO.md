@@ -46,10 +46,10 @@
   - Rate-limit signature verification by source, wallet address, and nonce.
   - Return `429 Too Many Requests` with `Retry-After`.
   - Use an in-memory limiter for one backend instance and a Redis-backed limiter before horizontal scaling.
-- [ ] Limit signature verification attempts per nonce.
-  - Atomically reserve an attempt before performing elliptic-curve recovery.
-  - Invalidate the challenge after the configured maximum number of failed attempts.
-  - Test sequential and concurrent failed attempts.
+- [x] Make each login challenge single-attempt.
+  - Atomically remove the challenge before performing elliptic-curve recovery.
+  - Reject every subsequent verification request using the same nonce.
+  - Test replay after successful and failed signature verification.
 - [ ] Enforce an absolute server-side session lifetime.
   - Store the authentication time in the session after successful wallet verification.
   - Add a request filter that invalidates sessions after a configurable absolute lifetime.

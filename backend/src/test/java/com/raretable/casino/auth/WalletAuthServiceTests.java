@@ -100,7 +100,7 @@ class WalletAuthServiceTests
     }
 
     @Test
-    void wrongWalletSignatureDoesNotConsumeChallenge()
+    void wrongWalletSignatureConsumesChallenge()
     {
         ChallengeResponse challenge = authService.createChallenge(getAddress(WALLET), 1);
 
@@ -112,12 +112,13 @@ class WalletAuthServiceTests
             )
         );
 
-        User user = authService.verify(
-            challenge.nonce(),
-            sign(challenge.message(), WALLET)
+        assertThrows(
+            WalletAuthenticationException.class,
+            () -> authService.verify(
+                challenge.nonce(),
+                sign(challenge.message(), WALLET)
+            )
         );
-
-        assertEquals(getAddress(WALLET), user.getWalletAddress().orElseThrow());
     }
 
     @Test

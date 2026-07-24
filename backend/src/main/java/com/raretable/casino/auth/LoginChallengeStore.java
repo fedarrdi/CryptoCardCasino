@@ -31,29 +31,18 @@ public final class LoginChallengeStore
         }
     }
 
-    LoginChallenge require(String nonce)
+    LoginChallenge take(String nonce)
     {
-        LoginChallenge challenge = challenges.get(nonce);
+        LoginChallenge challenge = challenges.remove(nonce);
 
         if (challenge == null)
         {
-            throw new WalletAuthenticationException("Login challenge does not exist");
+            throw new WalletAuthenticationException(
+                "Login challenge does not exist or has already been used"
+            );
         }
 
         return challenge;
-    }
-
-    void consume(LoginChallenge challenge)
-    {
-        if (!challenges.remove(challenge.nonce(), challenge))
-        {
-            throw new WalletAuthenticationException("Login challenge has already been used");
-        }
-    }
-
-    void remove(LoginChallenge challenge)
-    {
-        challenges.remove(challenge.nonce(), challenge);
     }
 
     @Scheduled(fixedRate = 1, timeUnit = TimeUnit.MINUTES)
