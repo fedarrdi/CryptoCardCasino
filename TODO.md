@@ -36,21 +36,28 @@
 
 ### Abuse And Capacity Controls
 
-- [ ] Move login challenges from the unbounded in-memory map to Redis.
-  - Store each challenge under an unpredictable nonce with a five-minute Redis TTL.
+- [ ] Bound login challenge storage.
+  - Replace the unbounded map with a maximum-size, expiring cache while running one backend instance.
+  - Store challenges in Redis with a five-minute TTL before running multiple backend instances.
   - Create and consume challenges atomically so a nonce can succeed only once.
-  - Configure Redis memory limits, eviction behavior, key-count metrics, and alerts.
+  - Configure cache-size metrics and alerts.
 - [ ] Add distributed rate limits to the anonymous authentication endpoints.
   - Rate-limit challenge creation by source and apply a global safety limit.
-  - Rate-limit signature verification by source and nonce.
+  - Rate-limit signature verification by source, wallet address, and nonce.
   - Return `429 Too Many Requests` with `Retry-After`.
-  - Use a Redis-backed limiter so limits remain correct across backend instances.
+  - Use an in-memory limiter for one backend instance and a Redis-backed limiter before horizontal scaling.
 - [ ] Limit signature verification attempts per nonce.
   - Atomically reserve an attempt before performing elliptic-curve recovery.
   - Invalidate the challenge after the configured maximum number of failed attempts.
   - Test sequential and concurrent failed attempts.
+- [ ] Enforce an absolute server-side session lifetime.
+  - Store the authentication time in the session after successful wallet verification.
+  - Add a request filter that invalidates sessions after a configurable absolute lifetime.
+  - Keep the 30-minute inactivity timeout as a separate limit.
+  - Return `401 Unauthorized` after expiration and make the frontend return to its disconnected state.
 - [ ] Move HTTP sessions to Spring Session backed by Redis before horizontal scaling.
   - Preserve the 30-minute inactivity timeout.
+  - Preserve the absolute session lifetime.
   - Verify logout and expiration delete the server-side session.
   - Verify two backend instances can read the same authenticated session.
 
@@ -77,3 +84,24 @@
   - Use a deterministic test wallet through an injected EIP-1193 provider.
   - Cover challenge, signature, session cookie, CSRF, table creation, one game mutation, and logout.
   - Assert that anonymous mutation requests and replayed signatures fail.
+
+## Table And User Capacity
+
+- [ ] Add table creation quotas.
+  - Allow a wallet to own only one waiting table at a time.
+  - Add a configurable global limit for active tables.
+  - Reject table creation when either limit is reached.
+- [ ] Delete abandoned waiting tables.
+  - Record table creation and last-activity times.
+  - Extend scheduled cleanup to remove waiting tables after a configurable inactivity period.
+  - Keep the existing closed-table retention and cleanup behavior.
+- [ ] Add filtered and paginated table discovery.
+  - Support bounded requests by game type, table status, page, and page size.
+  - Enforce a maximum page size in the backend.
+  - Make the frontend request only tables for the selected game.
+  - Stop lobby polling when the page is hidden or unmounted.
+  - Replace polling with WebSockets or server-sent events when real-time lobby updates are implemented.
+- [ ] Persist users outside the application process.
+  - Store users in PostgreSQL with a unique wallet-address constraint.
+  - Remove the permanent in-memory user maps.
+  - Rate-limit authentication and first-time user creation.
