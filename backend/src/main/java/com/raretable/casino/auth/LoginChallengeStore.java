@@ -45,6 +45,7 @@ public final class LoginChallengeStore
         return challenge;
     }
 
+    //for each that removes things from it's self while iterating is a bad idea mabe needs a fix 
     @Scheduled(fixedRate = 1, timeUnit = TimeUnit.MINUTES)
     public void deleteExpiredChallenges()
     {
