@@ -4,22 +4,78 @@ import {
   Diamond,
   Gamepad2,
   LayoutDashboard,
+  LoaderCircle,
+  LogOut,
   Menu,
   Spade,
-  Trophy,
+  UserRound,
   Wallet,
   X,
+  type LucideIcon,
 } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext.ts'
+import { games, type GameId } from '../data/games.ts'
+
+const GAME_ICONS: Record<GameId, LucideIcon> = {
+  cheat: Spade,
+  tago: Diamond,
+  'tien-len': Club,
+}
 
 function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false)
+  const [walletError, setWalletError] = useState<string | null>(null)
+  const [walletIsSubmitting, setWalletIsSubmitting] = useState(false)
+  const { user, status, connectWallet, signOut } = useAuth()
   const location = useLocation()
 
   const closeMobileMenu = () => setMobileMenuOpen(false)
   const homeSectionIsActive = (hash: string) =>
     location.pathname === '/' &&
     (location.hash === hash || (!location.hash && hash === '#lobby'))
+
+  async function handleConnectWallet() {
+    setWalletError(null)
+    setWalletIsSubmitting(true)
+
+    try {
+      await connectWallet()
+      setWalletMenuOpen(false)
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error
+      }
+
+      setWalletError(error.message)
+      setWalletMenuOpen(true)
+    } finally {
+      setWalletIsSubmitting(false)
+    }
+  }
+
+  async function handleLogout() {
+    setWalletError(null)
+    setWalletIsSubmitting(true)
+
+    try {
+      await signOut()
+      setWalletMenuOpen(false)
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error
+      }
+
+      setWalletError(error.message)
+    } finally {
+      setWalletIsSubmitting(false)
+    }
+  }
+
+  const shortWalletAddress = user
+    ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
+    : null
 
   return (
     <div className="app-shell">
@@ -41,10 +97,77 @@ function AppLayout() {
         </Link>
 
         <div className="topbar-actions">
-          <button className="wallet-button" type="button">
-            <Wallet size={18} />
-            <span>Connect wallet</span>
-          </button>
+          <div className="wallet-session-control">
+            <button
+              className={`wallet-button ${user ? 'is-connected' : ''}`}
+              type="button"
+              aria-expanded={walletMenuOpen}
+              disabled={status === 'checking' || walletIsSubmitting}
+              onClick={() => {
+                if (user) {
+                  setWalletMenuOpen((isOpen) => !isOpen)
+                } else {
+                  void handleConnectWallet()
+                }
+              }}
+            >
+              {status === 'checking' || walletIsSubmitting ? (
+                <LoaderCircle className="is-spinning" size={18} />
+              ) : user ? (
+                <UserRound size={18} />
+              ) : (
+                <Wallet size={18} />
+              )}
+              <span>
+                {status === 'checking'
+                  ? 'Checking session'
+                  : walletIsSubmitting
+                    ? user
+                      ? 'Disconnecting'
+                      : 'Connecting'
+                    : shortWalletAddress ?? 'Connect wallet'}
+              </span>
+            </button>
+
+            {walletMenuOpen && (
+              <div className="wallet-popover">
+                {user ? (
+                  <div className="wallet-session">
+                    <span>Signed in as</span>
+                    <strong>{user.name}</strong>
+                    <code>{user.walletAddress}</code>
+                    <span className="wallet-capability">EOA wallet</span>
+                    <button
+                      className="wallet-secondary-button"
+                      type="button"
+                      disabled={walletIsSubmitting}
+                      onClick={() => void handleLogout()}
+                    >
+                      <LogOut size={16} />
+                      Log out
+                    </button>
+                    {walletError && <span className="wallet-error">{walletError}</span>}
+                  </div>
+                ) : (
+                  <div className="wallet-connect-panel">
+                    <span>Wallet connection</span>
+                    <strong>MetaMask</strong>
+                    <span className="wallet-capability">EOA wallets only</span>
+                    <button
+                      className="wallet-primary-button"
+                      type="button"
+                      disabled={walletIsSubmitting}
+                      onClick={() => void handleConnectWallet()}
+                    >
+                      <Wallet size={16} />
+                      {walletIsSubmitting ? 'Connecting' : 'Connect MetaMask'}
+                    </button>
+                    {walletError && <span className="wallet-error">{walletError}</span>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -85,47 +208,27 @@ function AppLayout() {
                 <Gamepad2 size={18} />
                 Games
               </Link>
-              <Link
-                className={homeSectionIsActive('#tournaments') ? 'is-active' : undefined}
-                to="/#tournaments"
-                onClick={closeMobileMenu}
-              >
-                <Trophy size={18} />
-                Tournaments
-              </Link>
             </nav>
           </div>
 
           <div className="sidebar-section">
             <span className="sidebar-label">Available games</span>
             <nav className="sidebar-navigation" aria-label="Game navigation">
-              <NavLink
-                className={({ isActive }) => (isActive ? 'is-active' : undefined)}
-                to="/games/cheat"
-                onClick={closeMobileMenu}
-              >
-                <Spade size={18} />
-                Cheat
-                <span className="sidebar-count">1</span>
-              </NavLink>
-              <NavLink
-                className={({ isActive }) => (isActive ? 'is-active' : undefined)}
-                to="/games/tago"
-                onClick={closeMobileMenu}
-              >
-                <Diamond size={18} />
-                TAGO
-                <span className="sidebar-count">1</span>
-              </NavLink>
-              <NavLink
-                className={({ isActive }) => (isActive ? 'is-active' : undefined)}
-                to="/games/durak"
-                onClick={closeMobileMenu}
-              >
-                <Club size={18} />
-                Durak
-                <span className="sidebar-count">1</span>
-              </NavLink>
+              {games.map((game) => {
+                const GameIcon = GAME_ICONS[game.id]
+
+                return (
+                  <NavLink
+                    className={({ isActive }) => (isActive ? 'is-active' : undefined)}
+                    to={`/games/${game.id}`}
+                    onClick={closeMobileMenu}
+                    key={game.id}
+                  >
+                    <GameIcon size={18} />
+                    {game.name}
+                  </NavLink>
+                )
+              })}
             </nav>
           </div>
         </aside>

@@ -10,6 +10,7 @@ import AppLayout from './components/AppLayout.tsx'
 import GameLobbyPage from './pages/GameLobbyPage.tsx'
 import GameTablePage from './pages/GameTablePage.tsx'
 import HomePage from './pages/HomePage.tsx'
+import { AuthProvider } from './auth/AuthProvider.tsx'
 
 function RouteScroll() {
   const location = useLocation()
@@ -45,17 +46,19 @@ function NotFoundPage() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <RouteScroll />
-      <Routes>
-        <Route path="games/:gameId/lobbies/:lobbyId" element={<GameTablePage />} />
-        <Route element={<AppLayout />}>
-          <Route index element={<HomePage />} />
-          <Route path="games/:gameId" element={<GameLobbyPage />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <RouteScroll />
+        <Routes>
+          <Route path="games/:gameId/tables/:tableId" element={<GameTablePage />} />
+          <Route element={<AppLayout />}>
+            <Route index element={<HomePage />} />
+            <Route path="games/:gameId" element={<GameLobbyPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
 
