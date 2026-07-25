@@ -10,21 +10,11 @@ public final class User
     private final String walletAddress;
     private String name;
 
-    public User(String name)
-    {
-        this(name, null);
-    }
-
-    User(String name, String walletAddress)
-    {
-        this(UUID.randomUUID(), name, walletAddress);
-    }
-
-    User(UUID uniqueId, String name, String walletAddress)
+    public User(UUID uniqueId, String name, String walletAddress)
     {
         this.uniqueId = Objects.requireNonNull(uniqueId, "User id is required");
         validateName(name);
-        this.walletAddress = walletAddress;
+        this.walletAddress = Objects.requireNonNull(walletAddress, "Wallet address is required");
         this.name = name.trim();
     }
 

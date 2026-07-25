@@ -14,11 +14,13 @@ import com.raretable.casino.user.User;
 class CheatTests
 {
     private static final List<Integer> ALL_CARD_INDEXES = List.of(0, 1, 2, 3, 4, 5, 6, 7);
+    private static final String ADA_WALLET = "0x0000000000000000000000000000000000000001";
+    private static final String LINUS_WALLET = "0x0000000000000000000000000000000000000002";
 
     @Test
     void playerWithNoCardsWinsWhenNextPlayerDeclinesToCallBluff()
     {
-        List<User> users = List.of(new User("Ada"), new User("Linus"));
+        List<User> users = createUsers();
         Cheat game = new Cheat(users);
         UUID lastPlayerId = currentPlayerId(game, users);
         UUID nextPlayerId = otherPlayerId(users, lastPlayerId);
@@ -38,7 +40,7 @@ class CheatTests
     @Test
     void successfulBluffCallPreventsPlayerWithNoCardsFromWinning()
     {
-        List<User> users = List.of(new User("Ada"), new User("Linus"));
+        List<User> users = createUsers();
         Cheat game = new Cheat(users);
         UUID lastPlayerId = currentPlayerId(game, users);
         UUID nextPlayerId = otherPlayerId(users, lastPlayerId);
@@ -56,7 +58,7 @@ class CheatTests
     @Test
     void unsuccessfulBluffCallConfirmsPlayerWithNoCardsAsWinner()
     {
-        List<User> users = List.of(new User("Ada"), new User("Linus"));
+        List<User> users = createUsers();
         Cheat game = new Cheat(users);
         UUID lastPlayerId = currentPlayerId(game, users);
         UUID nextPlayerId = otherPlayerId(users, lastPlayerId);
@@ -76,6 +78,14 @@ class CheatTests
 
         assertEquals(CheatGameStatus.FINISHED, game.getStatus());
         assertEquals(lastPlayerId, game.getWinnerId());
+    }
+
+    private List<User> createUsers()
+    {
+        return List.of(
+            new User(UUID.randomUUID(), "Ada", ADA_WALLET),
+            new User(UUID.randomUUID(), "Linus", LINUS_WALLET)
+        );
     }
 
     private void playFirstCardTruthfully(Cheat game, UUID playerId)
