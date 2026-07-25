@@ -1,5 +1,8 @@
 package com.raretable.casino.security;
 
+import java.time.Clock;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -10,11 +13,13 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.savedrequest.NullRequestCache;
 
 @Configuration
 @EnableWebSecurity
+@EnableConfigurationProperties(WalletSessionProperties.class)
 public class SecurityConfig
 {
     @Bean
@@ -34,11 +39,21 @@ public class SecurityConfig
         HttpSecurity http,
         SecurityContextRepository securityContextRepository,
         ApiAuthenticationEntryPoint authenticationEntryPoint,
-        ApiAccessDeniedHandler accessDeniedHandler
+        ApiAccessDeniedHandler accessDeniedHandler,
+        WalletSessionProperties sessionProperties,
+        Clock clock
     ) throws Exception
     {
+        AbsoluteSessionLifetimeFilter absoluteSessionLifetimeFilter =
+            new AbsoluteSessionLifetimeFilter(
+                clock,
+                sessionProperties,
+                authenticationEntryPoint
+            );
+
         http
             .securityMatcher("/api/**")
+            .addFilterAfter(absoluteSessionLifetimeFilter, SecurityContextHolderFilter.class)
             .authorizeHttpRequests(authorize -> authorize
                 .requestMatchers(HttpMethod.POST, "/api/auth/challenges", "/api/auth/sessions")
                 .permitAll()

@@ -50,7 +50,7 @@
   - Atomically remove the challenge before performing elliptic-curve recovery.
   - Reject every subsequent verification request using the same nonce.
   - Test replay after successful and failed signature verification.
-- [ ] Enforce an absolute server-side session lifetime.
+- [x] Enforce an absolute server-side session lifetime.
   - Store the authentication time in the session after successful wallet verification.
   - Add a request filter that invalidates sessions after a configurable absolute lifetime.
   - Keep the 30-minute inactivity timeout as a separate limit.

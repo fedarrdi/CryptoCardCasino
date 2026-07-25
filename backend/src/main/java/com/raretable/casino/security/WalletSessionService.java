@@ -1,5 +1,6 @@
 package com.raretable.casino.security;
 
+import java.time.Clock;
 import java.util.List;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -15,22 +16,29 @@ import com.raretable.casino.user.User;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 
 @Service
 public final class WalletSessionService
 {
+    static final String AUTHENTICATED_AT_SESSION_ATTRIBUTE =
+        WalletSessionService.class.getName() + ".authenticatedAt";
+
     private final SecurityContextRepository securityContextRepository;
     private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
     private final SecurityContextHolderStrategy securityContextHolderStrategy;
+    private final Clock clock;
 
     public WalletSessionService(
         SecurityContextRepository securityContextRepository,
-        SessionAuthenticationStrategy sessionAuthenticationStrategy
+        SessionAuthenticationStrategy sessionAuthenticationStrategy,
+        Clock clock
     )
     {
         this.securityContextRepository = securityContextRepository;
         this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
         this.securityContextHolderStrategy = SecurityContextHolder.getContextHolderStrategy();
+        this.clock = clock;
     }
 
     public void authenticate(
@@ -57,5 +65,14 @@ public final class WalletSessionService
         securityContext.setAuthentication(authentication);
         securityContextHolderStrategy.setContext(securityContext);
         securityContextRepository.saveContext(securityContext, request, response);
+
+        HttpSession session = request.getSession(false);
+
+        if (session == null)
+        {
+            throw new IllegalStateException("Authentication did not create an HTTP session");
+        }
+
+        session.setAttribute(AUTHENTICATED_AT_SESSION_ATTRIBUTE, clock.instant());
     }
 }
