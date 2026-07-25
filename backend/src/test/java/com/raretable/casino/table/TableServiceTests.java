@@ -7,17 +7,27 @@ import static com.raretable.casino.table.TestUserFactory.createWalletUser;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 
+import com.raretable.casino.PostgresTestConfiguration;
 import com.raretable.casino.game.GameType;
 import com.raretable.casino.user.User;
 import com.raretable.casino.user.UserService;
 
+@SpringBootTest
+@ActiveProfiles("test")
+@Import(PostgresTestConfiguration.class)
 class TableServiceTests
 {
+    @Autowired
+    private UserService userService;
+
     @Test
     void rejectsPlayerCountsOutsideCheatLimits()
     {
-        UserService userService = new UserService();
         User creator = createWalletUser(userService, 1);
         TableService tableService = new TableService(userService);
 
@@ -34,7 +44,6 @@ class TableServiceTests
     @Test
     void deletingCreatorRemovesWaitingTableAndItsPlayers()
     {
-        UserService userService = new UserService();
         User creator = createWalletUser(userService, 1);
         User waitingPlayer = createWalletUser(userService, 2);
         TableService tableService = new TableService(userService);
@@ -49,7 +58,6 @@ class TableServiceTests
     @Test
     void nonCreatorLeavingKeepsCreatorAtWaitingTable()
     {
-        UserService userService = new UserService();
         User creator = createWalletUser(userService, 1);
         User waitingPlayer = createWalletUser(userService, 2);
         TableService tableService = new TableService(userService);

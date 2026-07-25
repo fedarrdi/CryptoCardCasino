@@ -14,14 +14,22 @@ import java.time.ZoneId;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 import org.web3j.crypto.ECKeyPair;
 import org.web3j.crypto.Keys;
 import org.web3j.crypto.Sign;
 import org.web3j.utils.Numeric;
 
+import com.raretable.casino.PostgresTestConfiguration;
 import com.raretable.casino.user.User;
 import com.raretable.casino.user.UserService;
 
+@SpringBootTest
+@ActiveProfiles("test")
+@Import(PostgresTestConfiguration.class)
 class WalletAuthServiceTests
 {
     private static final ECKeyPair WALLET = ECKeyPair.create(BigInteger.ONE);
@@ -29,6 +37,9 @@ class WalletAuthServiceTests
 
     private MutableClock clock;
     private WalletAuthService authService;
+
+    @Autowired
+    private UserService userService;
 
     @BeforeEach
     void setUp()
@@ -50,7 +61,7 @@ class WalletAuthServiceTests
             new SiweMessageFactory(properties),
             signatureVerifier,
             properties,
-            new UserService(),
+            userService,
             clock
         );
     }

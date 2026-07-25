@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: raretable
+      POSTGRES_USER: raretable
+      POSTGRES_PASSWORD: raretable
+    ports:
+      - "5433:5432"
+    volumes:
+      - raretable-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raretable -d raretable"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  raretable-postgres-data:

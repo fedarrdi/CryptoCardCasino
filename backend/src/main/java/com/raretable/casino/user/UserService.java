@@ -1,39 +1,38 @@
 package com.raretable.casino.user;
 
-import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
+
+import com.raretable.casino.user.persistence.UserJpaRepository;
 
 @Service
 public final class UserService
 {
-    private final Map<UUID, User> users;
-    private final Map<String, User> usersByWalletAddress;
+    private static final Pattern WALLET_ADDRESS_PATTERN =
+        Pattern.compile("^0x[0-9a-fA-F]{40}$");
 
-    public UserService()
+    private final UserJpaRepository repository;
+    private final UserMapper mapper;
+
+    public UserService(UserJpaRepository repository, UserMapper mapper)
     {
-        this.users = new ConcurrentHashMap<>();
-        this.usersByWalletAddress = new ConcurrentHashMap<>();
+        this.repository = repository;
+        this.mapper = mapper;
     }
 
     public User findOrCreateByWalletAddress(String walletAddress)
     {
-        if (walletAddress == null || !walletAddress.matches("^0x[0-9a-fA-F]{40}$"))
+        if (walletAddress == null
+            || !WALLET_ADDRESS_PATTERN.matcher(walletAddress).matches())
         {
             throw new IllegalArgumentException("Invalid Ethereum wallet address");
         }
 
-        String normalizedAddress = walletAddress.toLowerCase(Locale.ROOT);
-
-        return usersByWalletAddress.computeIfAbsent(normalizedAddress, ignored ->
-        {
-            User user = new User(createDefaultName(walletAddress), walletAddress);
-            users.put(user.getUniqueId(), user);
-            return user;
-        });
+        return repository.findByWalletAddressIgnoreCase(walletAddress)
+            .map(mapper::toDomain)
+            .orElseGet(() -> createUser(walletAddress));
     }
 
     public User getUser(UUID userId)
@@ -43,14 +42,24 @@ public final class UserService
             throw new IllegalArgumentException("User id is required");
         }
 
-        User user = users.get(userId);
+        return repository.findById(userId)
+            .map(mapper::toDomain)
+            .orElseThrow(() -> new UserNotFoundException(userId));
+    }
 
-        if (user == null)
-        {
-            throw new UserNotFoundException(userId);
-        }
+    private User createUser(String walletAddress)
+    {
+        repository.insertIfAbsent(
+            UUID.randomUUID(),
+            walletAddress,
+            createDefaultName(walletAddress)
+        );
 
-        return user;
+        return repository.findByWalletAddressIgnoreCase(walletAddress)
+            .map(mapper::toDomain)
+            .orElseThrow(() -> new IllegalStateException(
+                "User was not available after database insertion"
+            ));
     }
 
     private static String createDefaultName(String walletAddress)

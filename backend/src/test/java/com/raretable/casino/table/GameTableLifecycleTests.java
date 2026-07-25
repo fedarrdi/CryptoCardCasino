@@ -10,7 +10,12 @@ import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 
+import com.raretable.casino.PostgresTestConfiguration;
 import com.raretable.casino.common.Rank;
 import com.raretable.casino.game.GameType;
 import com.raretable.casino.game.cheat.Cheat;
@@ -18,8 +23,14 @@ import com.raretable.casino.game.cheat.CheatGameService;
 import com.raretable.casino.user.User;
 import com.raretable.casino.user.UserService;
 
+@SpringBootTest
+@ActiveProfiles("test")
+@Import(PostgresTestConfiguration.class)
 class GameTableLifecycleTests
 {
+    @Autowired
+    private UserService userService;
+
     @Test
     void closesCheatTableAfterWinnerIsConfirmed()
     {
@@ -93,7 +104,6 @@ class GameTableLifecycleTests
     @Test
     void forfeitedSeatCannotBeRejoinedOrReplaced()
     {
-        UserService userService = new UserService();
         User creator = createWalletUser(userService, 1);
         User secondPlayer = createWalletUser(userService, 2);
         User thirdPlayer = createWalletUser(userService, 3);
@@ -122,7 +132,6 @@ class GameTableLifecycleTests
 
     private GameSetup createStartedCheatGame()
     {
-        UserService userService = new UserService();
         User creator = createWalletUser(userService, 1);
         User opponent = createWalletUser(userService, 2);
         TableService tableService = new TableService(userService);

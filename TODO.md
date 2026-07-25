@@ -93,7 +93,8 @@
   - Make the frontend request only tables for the selected game.
   - Stop lobby polling when the page is hidden or unmounted.
   - Replace polling with WebSockets or server-sent events when real-time lobby updates are implemented.
-- [ ] Persist users outside the application process.
+- [x] Persist users outside the application process.
   - Store users in PostgreSQL with a unique wallet-address constraint.
   - Remove the permanent in-memory user maps.
+- [ ] Protect first-time user creation from abuse.
   - Rate-limit authentication and first-time user creation.

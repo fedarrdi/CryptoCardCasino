@@ -17,8 +17,13 @@ public final class User
 
     User(String name, String walletAddress)
     {
+        this(UUID.randomUUID(), name, walletAddress);
+    }
+
+    User(UUID uniqueId, String name, String walletAddress)
+    {
+        this.uniqueId = Objects.requireNonNull(uniqueId, "User id is required");
         validateName(name);
-        this.uniqueId = UUID.randomUUID();
         this.walletAddress = walletAddress;
         this.name = name.trim();
     }

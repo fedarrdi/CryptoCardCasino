@@ -9,14 +9,17 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 
+import com.raretable.casino.PostgresTestConfiguration;
 import com.raretable.casino.security.WalletSessionProperties;
 
 @SpringBootTest(properties = {
     "raretable.auth.siwe.domain=raretable.example",
     "raretable.auth.siwe.uri=https://raretable.example"
 })
+@Import(PostgresTestConfiguration.class)
 class ProductionConfigurationTests
 {
     @Autowired
