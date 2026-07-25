@@ -14,8 +14,6 @@
   --text-muted: #969e97;
   --accent: #ff6758;
   --accent-dark: #d84d40;
-  --green: #69d88a;
-  --blue: #6ca9ff;
   --gold: #e7bf6a;
 }
 
@@ -491,14 +489,6 @@ select:focus-visible {
 
 .game-status-red svg {
   color: var(--accent);
-}
-
-.game-status-blue svg {
-  color: var(--blue);
-}
-
-.game-status-green svg {
-  color: var(--green);
 }
 
 .game-card-content {

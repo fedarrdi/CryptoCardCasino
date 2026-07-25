@@ -2,9 +2,6 @@ import type {
   Rank,
   StandardCard,
   Suit,
-  TagoCard,
-  TagoCardValue,
-  TienLenCombinationType,
 } from '../../api/games.ts'
 import type { CardSuit, VisualCard } from './types.ts'
 
@@ -22,16 +19,6 @@ export const RANKS: readonly Rank[] = [
   'QUEEN',
   'KING',
   'ACE',
-]
-
-export const COMBINATION_TYPES: readonly TienLenCombinationType[] = [
-  'SINGLE',
-  'PAIR',
-  'TRIPLE',
-  'STRAIGHT',
-  'FLUSH',
-  'FULL_HOUSE',
-  'FOUR_OF_A_KIND',
 ]
 
 const RANK_LABELS: Record<Rank, string> = {
@@ -73,41 +60,11 @@ const SUIT_NAMES: Record<Suit, CardSuit> = {
   SPADES: 'spades',
 }
 
-const TAGO_VALUE_LABELS: Record<TagoCardValue, string> = {
-  ZERO: '0',
-  HALF: '1/2',
-  ONE: '1',
-  TWO: '2',
-  THREE: '3',
-  FOUR: '4',
-  FIVE: '5',
-  SIX: '6',
-  SEVEN: '7',
-  EIGHT: '8',
-}
-
-export const COMBINATION_LABELS: Record<TienLenCombinationType, string> = {
-  SINGLE: 'Single',
-  PAIR: 'Pair',
-  TRIPLE: 'Triple',
-  STRAIGHT: 'Straight',
-  FLUSH: 'Flush',
-  FULL_HOUSE: 'Full house',
-  FOUR_OF_A_KIND: 'Four of a kind',
-}
-
 export function toVisualCard(card: StandardCard): VisualCard {
   return {
     kind: 'standard',
     rank: RANK_LABELS[card.rank],
     suit: SUIT_NAMES[card.suit],
-  }
-}
-
-export function toTagoVisualCard(card: TagoCard): VisualCard {
-  return {
-    kind: 'tago',
-    value: TAGO_VALUE_LABELS[card.value],
   }
 }
 

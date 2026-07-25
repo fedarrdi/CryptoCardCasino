@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  Club,
   Diamond,
   Gamepad2,
   LayoutDashboard,
@@ -19,8 +18,6 @@ import { games, type GameId } from '../data/games.ts'
 
 const GAME_ICONS: Record<GameId, LucideIcon> = {
   cheat: Spade,
-  tago: Diamond,
-  'tien-len': Club,
 }
 
 function AppLayout() {

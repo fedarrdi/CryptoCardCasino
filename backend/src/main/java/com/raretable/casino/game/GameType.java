@@ -2,9 +2,7 @@ package com.raretable.casino.game;
 
 public enum GameType
 {
-    CHEAT(2, 6, "Cheat"),
-    TAGO(2, 8, "TAGO"),
-    TIEN_LEN(2, 4, "Tien Len");
+    CHEAT(2, 6, "Cheat");
 
     private final int minimumPlayers;
     private final int maximumPlayers;

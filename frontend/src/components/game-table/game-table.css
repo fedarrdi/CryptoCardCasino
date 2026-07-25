@@ -9,20 +9,6 @@
   color: #f6f5f0;
 }
 
-.table-theme-tago {
-  --table-accent: #6ca9ff;
-  --table-accent-rgb: 108 169 255;
-  --table-accent-ink: #07111f;
-  --table-felt: #103f39;
-}
-
-.table-theme-tien-len {
-  --table-accent: #e5bf6e;
-  --table-accent-rgb: 229 191 110;
-  --table-accent-ink: #1b1204;
-  --table-felt: #174332;
-}
-
 .game-table-topbar {
   position: relative;
   z-index: 40;
@@ -559,27 +545,6 @@
   height: 23px;
 }
 
-.table-card-tago {
-  border-color: #d6c99e;
-  background: #ebe4ce;
-  color: #263b59;
-}
-
-.tago-card-value {
-  font-family: Georgia, serif;
-  font-size: 1.75rem;
-  font-weight: 800;
-}
-
-.tago-card-mark {
-  position: absolute;
-  right: 7px;
-  bottom: 7px;
-  width: 15px;
-  height: 15px;
-  color: #b28b3d;
-}
-
 .table-card.is-small .table-card-back-pattern {
   inset: 4px;
 }
@@ -613,17 +578,6 @@
 .table-card.is-small .table-card-suit {
   width: 19px;
   height: 19px;
-}
-
-.table-card.is-small .tago-card-value {
-  font-size: 1rem;
-}
-
-.table-card.is-small .tago-card-mark {
-  right: 4px;
-  bottom: 4px;
-  width: 9px;
-  height: 9px;
 }
 
 .game-table-center {

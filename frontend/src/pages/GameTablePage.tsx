@@ -9,8 +9,6 @@ import { isGameWaitingError, isTableNotFoundError } from '../api/client.ts'
 import { leaveTable } from '../api/tables.ts'
 import { useAuth } from '../auth/AuthContext.ts'
 import CheatTableView from '../components/game-table/games/CheatTableView.tsx'
-import TagoTableView from '../components/game-table/games/TagoTableView.tsx'
-import TienLenTableView from '../components/game-table/games/TienLenTableView.tsx'
 import '../components/game-table/game-table.css'
 import { findGame } from '../data/games.ts'
 
@@ -314,47 +312,18 @@ function GameTablePage() {
     }
   }
 
-  switch (loadedState.gameId) {
-    case 'cheat':
-      return (
-        <CheatTableView
-          game={game}
-          tableId={tableId}
-          userId={user.userId}
-          state={loadedState.state}
-          actionPending={actionPending}
-          actionError={actionError}
-          performAction={performAction}
-          onLeave={handleExitGame}
-        />
-      )
-    case 'tago':
-      return (
-        <TagoTableView
-          game={game}
-          tableId={tableId}
-          userId={user.userId}
-          state={loadedState.state}
-          actionPending={actionPending}
-          actionError={actionError}
-          performAction={performAction}
-          onLeave={handleExitGame}
-        />
-      )
-    case 'tien-len':
-      return (
-        <TienLenTableView
-          game={game}
-          tableId={tableId}
-          userId={user.userId}
-          state={loadedState.state}
-          actionPending={actionPending}
-          actionError={actionError}
-          performAction={performAction}
-          onLeave={handleExitGame}
-        />
-      )
-  }
+  return (
+    <CheatTableView
+      game={game}
+      tableId={tableId}
+      userId={user.userId}
+      state={loadedState.state}
+      actionPending={actionPending}
+      actionError={actionError}
+      performAction={performAction}
+      onLeave={handleExitGame}
+    />
+  )
 }
 
 export default GameTablePage

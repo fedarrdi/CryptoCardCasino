@@ -2,16 +2,11 @@ import type { ReactNode } from 'react'
 
 export type CardSuit = 'clubs' | 'diamonds' | 'hearts' | 'spades'
 
-export type VisualCard =
-  | {
-      kind: 'standard'
-      rank: string
-      suit: CardSuit
-    }
-  | {
-      kind: 'tago'
-      value: string
-    }
+export type VisualCard = {
+  kind: 'standard'
+  rank: string
+  suit: CardSuit
+}
 
 export type SeatPosition =
   | 'seat-top-left'

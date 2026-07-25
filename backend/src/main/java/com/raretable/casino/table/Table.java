@@ -9,8 +9,6 @@ import java.util.UUID;
 import com.raretable.casino.game.Game;
 import com.raretable.casino.game.GameType;
 import com.raretable.casino.game.cheat.Cheat;
-import com.raretable.casino.game.tago.Tago;
-import com.raretable.casino.game.tienlen.TienLen;
 import com.raretable.casino.user.User;
 
 public final class Table
@@ -177,8 +175,6 @@ public final class Table
         return switch (gameType)
         {
             case CHEAT -> new Cheat(users);
-            case TAGO -> new Tago(users);
-            case TIEN_LEN -> new TienLen(users);
         };
     }
 

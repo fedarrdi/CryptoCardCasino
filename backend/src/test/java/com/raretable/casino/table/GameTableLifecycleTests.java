@@ -15,12 +15,6 @@ import com.raretable.casino.common.Rank;
 import com.raretable.casino.game.GameType;
 import com.raretable.casino.game.cheat.Cheat;
 import com.raretable.casino.game.cheat.CheatGameService;
-import com.raretable.casino.game.tago.Tago;
-import com.raretable.casino.game.tago.TagoGameService;
-import com.raretable.casino.game.tienlen.TienLen;
-import com.raretable.casino.game.tienlen.TienLenGameService;
-import com.raretable.casino.game.tienlen.TienLenGameState;
-import com.raretable.casino.game.tienlen.TienLenCombinationType;
 import com.raretable.casino.user.User;
 import com.raretable.casino.user.UserService;
 
@@ -29,7 +23,7 @@ class GameTableLifecycleTests
     @Test
     void closesCheatTableAfterWinnerIsConfirmed()
     {
-        GameSetup setup = createStartedGame(GameType.CHEAT);
+        GameSetup setup = createStartedCheatGame();
         Cheat game = (Cheat) setup.tableService().getTable(setup.tableId()).getGame();
         CheatGameService gameService = new CheatGameService(setup.tableService());
         UUID finishingPlayerId = currentPlayerId(game, setup.users());
@@ -50,53 +44,15 @@ class GameTableLifecycleTests
     }
 
     @Test
-    void closesTagoTableAfterGameFinishes()
-    {
-        GameSetup setup = createStartedGame(GameType.TAGO);
-        Tago game = (Tago) setup.tableService().getTable(setup.tableId()).getGame();
-        TagoGameService gameService = new TagoGameService(setup.tableService());
-
-        gameService.fold(setup.tableId(), game.getCurrentPlayerId());
-
-        assertEquals(TableStatus.CLOSED, setup.tableService().getTable(setup.tableId()).getStatus());
-    }
-
-    @Test
-    void closesTienLenTableAfterPlayerUsesLastCard()
-    {
-        GameSetup setup = createStartedGame(GameType.TIEN_LEN);
-        TienLenGameService gameService = new TienLenGameService(setup.tableService());
-        UUID leaderId = gameService
-            .getGameState(setup.tableId(), setup.users().get(0).getUniqueId())
-            .currentPlayerId();
-
-        for (int cardsPlayed = 0; cardsPlayed < 13; cardsPlayed++)
-        {
-            TienLenGameState state = gameService.playCards(
-                setup.tableId(),
-                leaderId,
-                List.of(0),
-                TienLenCombinationType.SINGLE
-            );
-
-            if (cardsPlayed < 12)
-            {
-                gameService.pass(setup.tableId(), state.currentPlayerId());
-            }
-        }
-
-        assertEquals(TableStatus.CLOSED, setup.tableService().getTable(setup.tableId()).getStatus());
-    }
-
-    @Test
     void deletesOnlyClosedTablesThatReachedTheRetentionCutoff()
     {
-        GameSetup setup = createStartedGame(GameType.TAGO);
+        GameSetup setup = createStartedCheatGame();
         Table table = setup.tableService().getTable(setup.tableId());
-        Tago game = (Tago) table.getGame();
-        TagoGameService gameService = new TagoGameService(setup.tableService());
 
-        gameService.fold(setup.tableId(), game.getCurrentPlayerId());
+        setup.tableService().leaveTable(
+            setup.tableId(),
+            setup.users().get(0).getUniqueId()
+        );
 
         Instant closedAt = table.getClosedAt();
         setup.tableService().deleteClosedTablesBefore(closedAt.minusNanos(1));
@@ -114,19 +70,24 @@ class GameTableLifecycleTests
     @Test
     void leavingTwoPlayerCheatAwardsRemainingPlayerAndClosesTable()
     {
-        assertTwoPlayerForfeitClosesTable(GameType.CHEAT);
-    }
+        GameSetup setup = createStartedCheatGame();
+        UUID leavingPlayerId = setup.users().get(0).getUniqueId();
+        UUID remainingPlayerId = setup.users().get(1).getUniqueId();
 
-    @Test
-    void leavingTwoPlayerTagoAwardsRemainingPlayerAndClosesTable()
-    {
-        assertTwoPlayerForfeitClosesTable(GameType.TAGO);
-    }
+        setup.tableService().leaveTable(setup.tableId(), leavingPlayerId);
 
-    @Test
-    void leavingTwoPlayerTienLenAwardsRemainingPlayerAndClosesTable()
-    {
-        assertTwoPlayerForfeitClosesTable(GameType.TIEN_LEN);
+        Table table = setup.tableService().getTable(setup.tableId());
+
+        assertEquals(TableStatus.CLOSED, table.getStatus());
+        assertEquals(List.of(setup.users().get(1)), table.getUsers());
+        assertEquals(
+            remainingPlayerId,
+            ((Cheat) table.getGame()).getWinnerId()
+        );
+        assertThrows(
+            IllegalStateException.class,
+            () -> setup.tableService().joinTable(setup.tableId(), leavingPlayerId)
+        );
     }
 
     @Test
@@ -159,48 +120,17 @@ class GameTableLifecycleTests
         );
     }
 
-    private void assertTwoPlayerForfeitClosesTable(GameType gameType)
-    {
-        GameSetup setup = createStartedGame(gameType);
-        UUID leavingPlayerId = setup.users().get(0).getUniqueId();
-        UUID remainingPlayerId = setup.users().get(1).getUniqueId();
-
-        setup.tableService().leaveTable(setup.tableId(), leavingPlayerId);
-
-        Table table = setup.tableService().getTable(setup.tableId());
-
-        assertEquals(TableStatus.CLOSED, table.getStatus());
-        assertEquals(List.of(setup.users().get(1)), table.getUsers());
-
-        switch (gameType)
-        {
-            case CHEAT -> assertEquals(
-                remainingPlayerId,
-                ((Cheat) table.getGame()).getWinnerId()
-            );
-            case TAGO -> assertEquals(
-                List.of(remainingPlayerId),
-                ((Tago) table.getGame()).getWinnerIds()
-            );
-            case TIEN_LEN -> assertEquals(
-                remainingPlayerId,
-                ((TienLen) table.getGame()).getWinnerId()
-            );
-        }
-
-        assertThrows(
-            IllegalStateException.class,
-            () -> setup.tableService().joinTable(setup.tableId(), leavingPlayerId)
-        );
-    }
-
-    private GameSetup createStartedGame(GameType gameType)
+    private GameSetup createStartedCheatGame()
     {
         UserService userService = new UserService();
         User creator = createWalletUser(userService, 1);
         User opponent = createWalletUser(userService, 2);
         TableService tableService = new TableService(userService);
-        UUID tableId = tableService.createTable(gameType, 2, creator.getUniqueId());
+        UUID tableId = tableService.createTable(
+            GameType.CHEAT,
+            2,
+            creator.getUniqueId()
+        );
 
         tableService.joinTable(tableId, opponent.getUniqueId());
 

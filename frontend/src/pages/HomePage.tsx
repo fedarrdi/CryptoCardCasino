@@ -16,7 +16,7 @@ function HomePage() {
           <span className="feature-kicker">Rare cardroom</span>
           <h1 id="lobby-title">The table is yours.</h1>
           <p>
-            Play Cheat, TAGO, and Tien Len at private player-versus-player tables.
+            Play Cheat at private player-versus-player tables.
           </p>
           <div className="feature-actions">
             <a className="primary-action" href="#games">
