@@ -12,14 +12,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
-import com.raretable.casino.PostgresTestConfiguration;
+import com.raretable.casino.InfrastructureTestConfiguration;
 import com.raretable.casino.game.GameType;
 import com.raretable.casino.user.User;
 import com.raretable.casino.user.UserService;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(PostgresTestConfiguration.class)
+@Import(InfrastructureTestConfiguration.class)
 class TableServiceTests
 {
     @Autowired

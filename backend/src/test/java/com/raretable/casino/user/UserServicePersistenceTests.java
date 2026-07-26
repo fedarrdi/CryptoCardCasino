@@ -14,13 +14,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
-import com.raretable.casino.PostgresTestConfiguration;
+import com.raretable.casino.InfrastructureTestConfiguration;
 import com.raretable.casino.user.persistence.UserEntity;
 import com.raretable.casino.user.persistence.UserJpaRepository;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(PostgresTestConfiguration.class)
+@Import(InfrastructureTestConfiguration.class)
 class UserServicePersistenceTests
 {
     @Autowired

@@ -7,7 +7,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties(SiweProperties.class)
+@EnableConfigurationProperties({
+    SiweProperties.class,
+    AuthRateLimitProperties.class
+})
 public class AuthConfiguration
 {
     @Bean

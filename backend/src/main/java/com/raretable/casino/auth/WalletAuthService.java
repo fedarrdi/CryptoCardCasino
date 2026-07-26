@@ -16,6 +16,7 @@ public final class WalletAuthService
     private final SiweMessageFactory messageFactory;
     private final EthereumSignatureVerifier signatureVerifier;
     private final SiweProperties properties;
+    private final AuthenticationRateLimiter rateLimiter;
     private final UserService userService;
     private final Clock clock;
 
@@ -25,6 +26,7 @@ public final class WalletAuthService
         SiweMessageFactory messageFactory,
         EthereumSignatureVerifier signatureVerifier,
         SiweProperties properties,
+        AuthenticationRateLimiter rateLimiter,
         UserService userService,
         Clock clock
     )
@@ -34,11 +36,16 @@ public final class WalletAuthService
         this.messageFactory = messageFactory;
         this.signatureVerifier = signatureVerifier;
         this.properties = properties;
+        this.rateLimiter = rateLimiter;
         this.userService = userService;
         this.clock = clock;
     }
 
-    public ChallengeResponse createChallenge(String walletAddress, long chainId)
+    public ChallengeResponse createChallenge(
+        String walletAddress,
+        long chainId,
+        String requestSource
+    )
     {
         if (chainId != properties.chainId())
         {
@@ -46,6 +53,7 @@ public final class WalletAuthService
         }
 
         String normalizedAddress = signatureVerifier.normalizeAddress(walletAddress);
+        rateLimiter.reserveChallengeRequest(requestSource, normalizedAddress);
         String nonce = nonceGenerator.generate();
         Instant issuedAt = clock.instant();
         Instant expiresAt = issuedAt.plus(properties.challengeTtl());
@@ -67,8 +75,9 @@ public final class WalletAuthService
         return new ChallengeResponse(nonce, message, expiresAt);
     }
 
-    public User verify(String nonce, String signature)
+    public User verify(String nonce, String signature, String requestSource)
     {
+        rateLimiter.reserveVerificationRequest(requestSource);
         LoginChallenge challenge = challengeStore.take(nonce);
         Instant now = clock.instant();
 
@@ -77,6 +86,7 @@ public final class WalletAuthService
             throw new WalletAuthenticationException("Login challenge has expired");
         }
 
+        rateLimiter.reserveWalletVerification(challenge.walletAddress());
         String recoveredAddress = signatureVerifier.recoverAddress(
             challenge.message(),
             signature

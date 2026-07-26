@@ -28,16 +28,16 @@
 
 ### Abuse And Capacity Controls
 
-- [ ] Bound login challenge storage.
-  - Replace the unbounded map with a maximum-size, expiring cache while running one backend instance.
-  - Store challenges in Redis with a five-minute TTL before running multiple backend instances.
-  - Create and consume challenges atomically so a nonce can succeed only once.
-  - Configure cache-size metrics and alerts.
-- [ ] Add distributed rate limits to the anonymous authentication endpoints.
+- [x] Bound login challenge storage.
+  - Store challenges in Redis with a five-minute TTL.
+  - Create challenges with `SET NX` and consume them atomically with `GETDEL`.
+  - Bound challenge creation through the global distributed rate limit.
+- [x] Add distributed rate limits to the anonymous authentication endpoints.
   - Rate-limit challenge creation by source and apply a global safety limit.
-  - Rate-limit signature verification by source, wallet address, and nonce.
+  - Rate-limit signature verification by source and wallet address.
+  - Consume each nonce atomically on its first verification attempt.
   - Return `429 Too Many Requests` with `Retry-After`.
-  - Use an in-memory limiter for one backend instance and a Redis-backed limiter before horizontal scaling.
+  - Use atomic Redis counters shared by every backend instance.
 - [x] Make each login challenge single-attempt.
   - Atomically remove the challenge before performing elliptic-curve recovery.
   - Reject every subsequent verification request using the same nonce.
@@ -47,11 +47,14 @@
   - Add a request filter that invalidates sessions after a configurable absolute lifetime.
   - Keep the 30-minute inactivity timeout as a separate limit.
   - Return `401 Unauthorized` after expiration and make the frontend return to its disconnected state.
-- [ ] Move HTTP sessions to Spring Session backed by Redis before horizontal scaling.
+- [x] Move HTTP sessions to Spring Session backed by Redis before horizontal scaling.
   - Preserve the 30-minute inactivity timeout.
   - Preserve the absolute session lifetime.
   - Verify logout and expiration delete the server-side session.
   - Verify two backend instances can read the same authenticated session.
+- [ ] Add Redis operational monitoring.
+  - Alert on connection failures, memory pressure, evictions, and rejected authentication requests.
+  - Track active session, login challenge, and rate-limit key counts.
 
 ### Wallet Compatibility And Dependencies
 

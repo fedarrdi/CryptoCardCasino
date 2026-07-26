@@ -38,12 +38,14 @@ public final class AuthController
 
     @PostMapping("/challenges")
     public ChallengeResponse createChallenge(
-        @Valid @RequestBody ChallengeRequest request
+        @Valid @RequestBody ChallengeRequest request,
+        HttpServletRequest httpRequest
     )
     {
         return walletAuthService.createChallenge(
             request.walletAddress(),
-            request.chainId()
+            request.chainId(),
+            httpRequest.getRemoteAddr()
         );
     }
 
@@ -54,7 +56,11 @@ public final class AuthController
         HttpServletResponse httpResponse
     )
     {
-        User user = walletAuthService.verify(request.nonce(), request.signature());
+        User user = walletAuthService.verify(
+            request.nonce(),
+            request.signature(),
+            httpRequest.getRemoteAddr()
+        );
         walletSessionService.authenticate(user, httpRequest, httpResponse);
         return AuthenticatedUserResponse.from(user);
     }

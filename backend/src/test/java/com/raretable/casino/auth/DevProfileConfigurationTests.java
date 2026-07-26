@@ -11,11 +11,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 import org.springframework.test.context.ActiveProfiles;
 
-import com.raretable.casino.PostgresTestConfiguration;
+import com.raretable.casino.InfrastructureTestConfiguration;
 
 @SpringBootTest
 @ActiveProfiles("dev")
-@Import(PostgresTestConfiguration.class)
+@Import(InfrastructureTestConfiguration.class)
 class DevProfileConfigurationTests
 {
     @Autowired

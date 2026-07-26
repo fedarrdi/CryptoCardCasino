@@ -1,11 +1,13 @@
 package com.raretable.casino.api;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.raretable.casino.auth.RateLimitExceededException;
 import com.raretable.casino.auth.WalletAuthenticationException;
 import com.raretable.casino.table.TableNotFoundException;
 import com.raretable.casino.user.UserNotFoundException;
@@ -13,6 +15,19 @@ import com.raretable.casino.user.UserNotFoundException;
 @RestControllerAdvice
 public final class ApiExceptionHandler
 {
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiError> handleRateLimitExceeded(
+        RateLimitExceededException exception
+    )
+    {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header(
+                HttpHeaders.RETRY_AFTER,
+                Long.toString(exception.retryAfterSeconds())
+            )
+            .body(new ApiError("RATE_LIMIT_EXCEEDED", exception.getMessage()));
+    }
+
     @ExceptionHandler(WalletAuthenticationException.class)
     public ResponseEntity<ApiError> handleAuthenticationFailure(
         WalletAuthenticationException exception

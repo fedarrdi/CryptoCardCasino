@@ -11,35 +11,47 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.web3j.crypto.ECKeyPair;
 import org.web3j.crypto.Keys;
 import org.web3j.crypto.Sign;
 import org.web3j.utils.Numeric;
 
-import com.raretable.casino.PostgresTestConfiguration;
+import com.raretable.casino.InfrastructureTestConfiguration;
 import com.raretable.casino.user.User;
 import com.raretable.casino.user.UserService;
 
+import tools.jackson.databind.json.JsonMapper;
+
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(PostgresTestConfiguration.class)
+@Import(InfrastructureTestConfiguration.class)
 class WalletAuthServiceTests
 {
     private static final ECKeyPair WALLET = ECKeyPair.create(BigInteger.ONE);
     private static final ECKeyPair OTHER_WALLET = ECKeyPair.create(BigInteger.TWO);
+    private static final String REQUEST_SOURCE = "203.0.113.1";
 
     private MutableClock clock;
     private WalletAuthService authService;
+    private LoginChallengeStore challengeStore;
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private StringRedisTemplate redis;
+
+    @Autowired
+    private JsonMapper jsonMapper;
 
     @BeforeEach
     void setUp()
@@ -52,8 +64,21 @@ class WalletAuthServiceTests
             1,
             true
         );
-        LoginChallengeStore challengeStore = new LoginChallengeStore(clock);
+        challengeStore = new LoginChallengeStore(
+            redis,
+            jsonMapper,
+            clock
+        );
         EthereumSignatureVerifier signatureVerifier = new EthereumSignatureVerifier();
+        AuthRateLimitProperties.Limits limits = new AuthRateLimitProperties.Limits(
+            1000,
+            1000,
+            1000
+        );
+        AuthenticationRateLimiter rateLimiter = new AuthenticationRateLimiter(
+            redis,
+            new AuthRateLimitProperties(Duration.ofMinutes(1), limits, limits)
+        );
 
         authService = new WalletAuthService(
             challengeStore,
@@ -61,6 +86,7 @@ class WalletAuthServiceTests
             new SiweMessageFactory(properties),
             signatureVerifier,
             properties,
+            rateLimiter,
             userService,
             clock
         );
@@ -70,11 +96,16 @@ class WalletAuthServiceTests
     void validSignatureCreatesUserForWallet()
     {
         String walletAddress = getAddress(WALLET);
-        ChallengeResponse challenge = authService.createChallenge(walletAddress, 1);
+        ChallengeResponse challenge = authService.createChallenge(
+            walletAddress,
+            1,
+            REQUEST_SOURCE
+        );
 
         User user = authService.verify(
             challenge.nonce(),
-            sign(challenge.message(), WALLET)
+            sign(challenge.message(), WALLET),
+            REQUEST_SOURCE
         );
 
         assertEquals(walletAddress, user.getWalletAddress().orElseThrow());
@@ -99,27 +130,64 @@ class WalletAuthServiceTests
     @Test
     void challengeCannotBeUsedTwice()
     {
-        ChallengeResponse challenge = authService.createChallenge(getAddress(WALLET), 1);
+        ChallengeResponse challenge = authService.createChallenge(
+            getAddress(WALLET),
+            1,
+            REQUEST_SOURCE
+        );
         String signature = sign(challenge.message(), WALLET);
 
-        authService.verify(challenge.nonce(), signature);
+        authService.verify(challenge.nonce(), signature, REQUEST_SOURCE);
 
         assertThrows(
             WalletAuthenticationException.class,
-            () -> authService.verify(challenge.nonce(), signature)
+            () -> authService.verify(challenge.nonce(), signature, REQUEST_SOURCE)
+        );
+    }
+
+    @Test
+    void anotherStoreInstanceCanConsumeChallengeBeforeItsRedisTtl()
+    {
+        ChallengeResponse response = authService.createChallenge(
+            getAddress(WALLET),
+            1,
+            REQUEST_SOURCE
+        );
+        Long timeToLive = redis.getExpire(
+            "raretable:auth:challenge:" + response.nonce(),
+            TimeUnit.SECONDS
+        );
+        LoginChallengeStore anotherStore = new LoginChallengeStore(
+            redis,
+            jsonMapper,
+            clock
+        );
+
+        LoginChallenge challenge = anotherStore.take(response.nonce());
+
+        assertEquals(response.nonce(), challenge.nonce());
+        assertTrue(timeToLive > 0 && timeToLive <= Duration.ofMinutes(5).toSeconds());
+        assertThrows(
+            WalletAuthenticationException.class,
+            () -> challengeStore.take(response.nonce())
         );
     }
 
     @Test
     void wrongWalletSignatureConsumesChallenge()
     {
-        ChallengeResponse challenge = authService.createChallenge(getAddress(WALLET), 1);
+        ChallengeResponse challenge = authService.createChallenge(
+            getAddress(WALLET),
+            1,
+            REQUEST_SOURCE
+        );
 
         assertThrows(
             WalletAuthenticationException.class,
             () -> authService.verify(
                 challenge.nonce(),
-                sign(challenge.message(), OTHER_WALLET)
+                sign(challenge.message(), OTHER_WALLET),
+                REQUEST_SOURCE
             )
         );
 
@@ -127,7 +195,8 @@ class WalletAuthServiceTests
             WalletAuthenticationException.class,
             () -> authService.verify(
                 challenge.nonce(),
-                sign(challenge.message(), WALLET)
+                sign(challenge.message(), WALLET),
+                REQUEST_SOURCE
             )
         );
     }
@@ -135,14 +204,19 @@ class WalletAuthServiceTests
     @Test
     void expiredChallengeIsRejected()
     {
-        ChallengeResponse challenge = authService.createChallenge(getAddress(WALLET), 1);
+        ChallengeResponse challenge = authService.createChallenge(
+            getAddress(WALLET),
+            1,
+            REQUEST_SOURCE
+        );
         clock.advance(Duration.ofMinutes(5));
 
         assertThrows(
             WalletAuthenticationException.class,
             () -> authService.verify(
                 challenge.nonce(),
-                sign(challenge.message(), WALLET)
+                sign(challenge.message(), WALLET),
+                REQUEST_SOURCE
             )
         );
     }
@@ -152,14 +226,26 @@ class WalletAuthServiceTests
     {
         assertThrows(
             IllegalArgumentException.class,
-            () -> authService.createChallenge(getAddress(WALLET), 11155111)
+            () -> authService.createChallenge(
+                getAddress(WALLET),
+                11155111,
+                REQUEST_SOURCE
+            )
         );
     }
 
     private User authenticate(String walletAddress, ECKeyPair wallet)
     {
-        ChallengeResponse challenge = authService.createChallenge(walletAddress, 1);
-        return authService.verify(challenge.nonce(), sign(challenge.message(), wallet));
+        ChallengeResponse challenge = authService.createChallenge(
+            walletAddress,
+            1,
+            REQUEST_SOURCE
+        );
+        return authService.verify(
+            challenge.nonce(),
+            sign(challenge.message(), wallet),
+            REQUEST_SOURCE
+        );
     }
 
     private static String getAddress(ECKeyPair wallet)

@@ -12,14 +12,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 
-import com.raretable.casino.PostgresTestConfiguration;
+import com.raretable.casino.InfrastructureTestConfiguration;
 import com.raretable.casino.security.WalletSessionProperties;
 
 @SpringBootTest(properties = {
     "raretable.auth.siwe.domain=raretable.example",
-    "raretable.auth.siwe.uri=https://raretable.example"
+    "raretable.auth.siwe.uri=https://raretable.example",
+    "spring.data.redis.url=redis://localhost:6379"
 })
-@Import(PostgresTestConfiguration.class)
+@Import(InfrastructureTestConfiguration.class)
 class ProductionConfigurationTests
 {
     @Autowired
