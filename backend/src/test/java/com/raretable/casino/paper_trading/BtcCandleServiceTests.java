@@ -60,13 +60,121 @@ class BtcCandleServiceTests
         assertEquals("BTCUSDT", response.symbol());
         assertEquals("1h", response.interval());
         assertEquals(2, response.candles().size());
+        assertEquals(true, response.hasMore());
         assertEquals(
             FIRST.plus(Duration.ofHours(999)).getEpochSecond(),
             response.candles().get(0).time()
         );
         assertEquals(
+            FIRST.plus(Duration.ofHours(999)).getEpochSecond(),
+            response.nextBefore()
+        );
+        assertEquals(
             FIRST.plus(Duration.ofHours(1_000)).getEpochSecond(),
             response.candles().get(1).time()
+        );
+    }
+
+    @Test
+    void returnsExclusiveOlderPagesAndSignalsTheHistoryBoundary()
+    {
+        InMemoryRepository repository = new InMemoryRepository();
+        RecordingSource source = new RecordingSource();
+        source.pages.add(hourlyPage(FIRST, 6));
+        BtcCandleService service = service(
+            repository,
+            source,
+            FIRST.plus(Duration.ofHours(5)).plus(Duration.ofMinutes(30)),
+            FIRST,
+            2
+        );
+        service.reconcile();
+
+        BtcCandlesResponse preceding = service.getBtcCandles(
+            FIRST.plus(Duration.ofHours(3)).getEpochSecond(),
+            2
+        );
+        assertEquals(
+            List.of(
+                FIRST.plus(Duration.ofHours(1)).getEpochSecond(),
+                FIRST.plus(Duration.ofHours(2)).getEpochSecond()
+            ),
+            preceding.candles().stream().map(BtcCandle::time).toList()
+        );
+        assertEquals(true, preceding.hasMore());
+        assertEquals(
+            FIRST.plus(Duration.ofHours(1)).getEpochSecond(),
+            preceding.nextBefore()
+        );
+
+        BtcCandlesResponse latest = service.getBtcCandles();
+        assertEquals(
+            List.of(
+                FIRST.plus(Duration.ofHours(3)).getEpochSecond(),
+                FIRST.plus(Duration.ofHours(4)).getEpochSecond()
+            ),
+            latest.candles().stream().map(BtcCandle::time).toList()
+        );
+        assertEquals(true, latest.hasMore());
+        assertEquals(
+            FIRST.plus(Duration.ofHours(3)).getEpochSecond(),
+            latest.nextBefore()
+        );
+        assertEquals(latest, service.getBtcCandles());
+        assertEquals(1, repository.findLatestCalls);
+
+        BtcCandlesResponse firstPage = service.getBtcCandles(
+            FIRST.plus(Duration.ofHours(2)).getEpochSecond(),
+            2
+        );
+        assertEquals(
+            List.of(
+                FIRST.getEpochSecond(),
+                FIRST.plus(Duration.ofHours(1)).getEpochSecond()
+            ),
+            firstPage.candles().stream().map(BtcCandle::time).toList()
+        );
+        assertEquals(false, firstPage.hasMore());
+        assertEquals(null, firstPage.nextBefore());
+
+        BtcCandlesResponse exhausted = service.getBtcCandles(
+            FIRST.getEpochSecond(),
+            2
+        );
+        assertEquals(List.of(), exhausted.candles());
+        assertEquals(false, exhausted.hasMore());
+        assertEquals(null, exhausted.nextBefore());
+    }
+
+    @Test
+    void rejectsInvalidPaginationParameters()
+    {
+        BtcCandleService service = service(
+            new InMemoryRepository(),
+            new RecordingSource(),
+            FIRST,
+            FIRST,
+            2_000
+        );
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.getBtcCandles(null, 0)
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.getBtcCandles(
+                null,
+                CandleHistoryQuery.MAX_PAGE_SIZE + 1
+            )
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.getBtcCandles(0L, 1)
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.getBtcCandles(Long.MAX_VALUE, 1)
         );
     }
 
@@ -200,6 +308,7 @@ class BtcCandleServiceTests
         implements MarketCandleRepository
     {
         private final Map<Instant, StoredCandle> candles = new TreeMap<>();
+        private int findLatestCalls;
 
         @Override
         public Optional<Instant> findLatestOpenTime(
@@ -217,7 +326,24 @@ class BtcCandleServiceTests
             int limit
         )
         {
+            findLatestCalls++;
             return candles.values().stream()
+                .sorted(Comparator.comparing(StoredCandle::openTime).reversed())
+                .limit(limit)
+                .sorted(Comparator.comparing(StoredCandle::openTime))
+                .toList();
+        }
+
+        @Override
+        public List<StoredCandle> findBefore(
+            String symbol,
+            String interval,
+            Instant before,
+            int limit
+        )
+        {
+            return candles.values().stream()
+                .filter(candle -> candle.openTime().isBefore(before))
                 .sorted(Comparator.comparing(StoredCandle::openTime).reversed())
                 .limit(limit)
                 .sorted(Comparator.comparing(StoredCandle::openTime))

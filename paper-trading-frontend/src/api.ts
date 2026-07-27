@@ -28,6 +28,8 @@ export type BtcCandleHistory = {
   symbol: 'BTCUSDT'
   interval: '1h'
   candles: MarketCandle[]
+  hasMore: boolean
+  nextBefore: number | null
 }
 
 export type BtcCandleUpdate = MarketCandle & {
@@ -107,10 +109,32 @@ export function getBtcPrice(): Promise<BtcPrice> {
   return requestJson<BtcPrice>('/api/paper-trading/btc-price')
 }
 
-export function getBtcCandles(signal?: AbortSignal): Promise<BtcCandleHistory> {
-  return requestJson<BtcCandleHistory>('/api/paper-trading/btc-candles', {
-    signal,
-  })
+export type BtcCandleHistoryRequest = {
+  before?: number
+  limit?: number
+  signal?: AbortSignal
+}
+
+export function getBtcCandles({
+  before,
+  limit,
+  signal,
+}: BtcCandleHistoryRequest = {}): Promise<BtcCandleHistory> {
+  const search = new URLSearchParams()
+
+  if (before !== undefined) {
+    search.set('before', String(before))
+  }
+
+  if (limit !== undefined) {
+    search.set('limit', String(limit))
+  }
+
+  const query = search.size === 0 ? '' : `?${search.toString()}`
+  return requestJson<BtcCandleHistory>(
+    `/api/paper-trading/btc-candles${query}`,
+    { signal },
+  )
 }
 
 export async function deleteSession(): Promise<void> {

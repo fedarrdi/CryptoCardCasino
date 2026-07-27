@@ -10,5 +10,12 @@ interface MarketCandleRepository
 
     List<StoredCandle> findLatest(String symbol, String interval, int limit);
 
+    List<StoredCandle> findBefore(
+        String symbol,
+        String interval,
+        Instant before,
+        int limit
+    );
+
     void upsertAll(List<StoredCandle> candles);
 }

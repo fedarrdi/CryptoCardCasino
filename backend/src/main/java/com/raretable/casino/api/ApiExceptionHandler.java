@@ -6,6 +6,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.raretable.casino.auth.RateLimitExceededException;
 import com.raretable.casino.auth.WalletAuthenticationException;
@@ -61,6 +63,18 @@ public final class ApiExceptionHandler
             .body(new ApiError("INVALID_REQUEST", exception.getMessage()));
     }
 
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(
+        MethodArgumentTypeMismatchException exception
+    )
+    {
+        return ResponseEntity.badRequest()
+            .body(new ApiError(
+                "INVALID_REQUEST",
+                "Request parameter has an invalid type"
+            ));
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiError> handleConflict(IllegalStateException exception)
     {
@@ -70,6 +84,15 @@ public final class ApiExceptionHandler
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidationFailure(MethodArgumentNotValidException exception)
+    {
+        return ResponseEntity.badRequest()
+            .body(new ApiError("VALIDATION_FAILED", "Request validation failed"));
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiError> handleMethodValidationFailure(
+        HandlerMethodValidationException exception
+    )
     {
         return ResponseEntity.badRequest()
             .body(new ApiError("VALIDATION_FAILED", "Request validation failed"));

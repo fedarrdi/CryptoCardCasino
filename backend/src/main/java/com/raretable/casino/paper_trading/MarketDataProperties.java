@@ -41,10 +41,12 @@ public record MarketDataProperties(
         requirePositive(reconciliationInterval, "Reconciliation interval");
         requirePositive(reconnectDelay, "Reconnect delay");
 
-        if (historyLimit <= 0 || historyLimit > 10_000)
+        if (historyLimit <= 0
+            || historyLimit > CandleHistoryQuery.MAX_PAGE_SIZE)
         {
             throw new IllegalArgumentException(
-                "Market-data history limit must be between 1 and 10000"
+                "Market-data history limit must be between 1 and "
+                    + CandleHistoryQuery.MAX_PAGE_SIZE
             );
         }
     }

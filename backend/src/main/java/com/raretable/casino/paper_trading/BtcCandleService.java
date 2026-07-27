@@ -1,6 +1,7 @@
 package com.raretable.casino.paper_trading;
 
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -39,25 +40,61 @@ final class BtcCandleService implements CandleHistoryQuery
     }
 
     @Override
-    public synchronized BtcCandlesResponse getBtcCandles()
+    public BtcCandlesResponse getBtcCandles(
+        Long before,
+        Integer requestedLimit
+    )
     {
+        int limit = resolveLimit(requestedLimit);
+        Instant beforeInstant = resolveBefore(before);
+
         if (!initialSyncComplete.get())
         {
             throw new MarketDataSynchronizingException();
         }
 
-        if (historyCache != null)
+        if (beforeInstant == null && limit == properties.historyLimit())
         {
-            return historyCache;
+            return getCachedLatestPage(limit);
         }
+        return loadPage(beforeInstant, limit);
+    }
 
-        List<BtcCandle> candles = repository
-            .findLatest(SYMBOL, INTERVAL, properties.historyLimit())
+    private synchronized BtcCandlesResponse getCachedLatestPage(int limit)
+    {
+        if (historyCache == null)
+        {
+            historyCache = loadPage(null, limit);
+        }
+        return historyCache;
+    }
+
+    private BtcCandlesResponse loadPage(Instant before, int limit)
+    {
+        int queryLimit = limit + 1;
+        List<StoredCandle> storedCandles = before == null
+            ? repository.findLatest(SYMBOL, INTERVAL, queryLimit)
+            : repository.findBefore(
+                SYMBOL,
+                INTERVAL,
+                before,
+                queryLimit
+            );
+        boolean hasMore = storedCandles.size() > limit;
+        int firstResultIndex = hasMore ? 1 : 0;
+        List<BtcCandle> candles = storedCandles
+            .subList(firstResultIndex, storedCandles.size())
             .stream()
             .map(StoredCandle::toResponse)
             .toList();
-        historyCache = new BtcCandlesResponse(SYMBOL, INTERVAL, candles);
-        return historyCache;
+        Long nextBefore = hasMore ? candles.getFirst().time() : null;
+        return new BtcCandlesResponse(
+            SYMBOL,
+            INTERVAL,
+            candles,
+            hasMore,
+            nextBefore
+        );
     }
 
     synchronized void reconcile()
@@ -184,5 +221,46 @@ final class BtcCandleService implements CandleHistoryQuery
             kline.close(),
             kline.volume()
         );
+    }
+
+    private int resolveLimit(Integer requestedLimit)
+    {
+        int limit = requestedLimit == null
+            ? properties.historyLimit()
+            : requestedLimit;
+        if (limit < 1 || limit > CandleHistoryQuery.MAX_PAGE_SIZE)
+        {
+            throw new IllegalArgumentException(
+                "Candle history limit must be between 1 and "
+                    + CandleHistoryQuery.MAX_PAGE_SIZE
+            );
+        }
+        return limit;
+    }
+
+    private static Instant resolveBefore(Long before)
+    {
+        if (before == null)
+        {
+            return null;
+        }
+        if (before <= 0)
+        {
+            throw new IllegalArgumentException(
+                "Candle history before cursor must be positive"
+            );
+        }
+
+        try
+        {
+            return Instant.ofEpochSecond(before);
+        }
+        catch (DateTimeException exception)
+        {
+            throw new IllegalArgumentException(
+                "Candle history before cursor is outside the supported range",
+                exception
+            );
+        }
     }
 }

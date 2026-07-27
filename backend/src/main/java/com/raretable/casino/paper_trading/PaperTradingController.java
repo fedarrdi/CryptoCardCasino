@@ -1,7 +1,12 @@
 package com.raretable.casino.paper_trading;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -32,8 +37,16 @@ public final class PaperTradingController
     }
 
     @GetMapping("/btc-candles")
-    public BtcCandlesResponse getBtcCandles()
+    public BtcCandlesResponse getBtcCandles(
+        @RequestParam(name = "before", required = false)
+        @Positive
+        Long before,
+        @RequestParam(name = "limit", required = false)
+        @Min(1)
+        @Max(CandleHistoryQuery.MAX_PAGE_SIZE)
+        Integer limit
+    )
     {
-        return candleHistory.getBtcCandles();
+        return candleHistory.getBtcCandles(before, limit);
     }
 }

@@ -118,14 +118,20 @@ class PaperTradingControllerTests
                     new BigDecimal("65600.70"),
                     new BigDecimal("98.76")
                 )
-            )
+            ),
+            true,
+            1785139200L
         );
 
         mockMvc.perform(get("/api/paper-trading/btc-candles")
+                .param("before", "1785146400")
+                .param("limit", "1000")
                 .session(authenticatedSession()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.symbol").value("BTCUSDT"))
             .andExpect(jsonPath("$.interval").value("1h"))
+            .andExpect(jsonPath("$.hasMore").value(true))
+            .andExpect(jsonPath("$.nextBefore").value(1785139200L))
             .andExpect(jsonPath("$.candles.length()").value(2))
             .andExpect(jsonPath("$.candles[0].time").value(1785139200L))
             .andExpect(jsonPath("$.candles[0].open").value(65000.10))
@@ -134,6 +140,33 @@ class PaperTradingControllerTests
             .andExpect(jsonPath("$.candles[0].close").value(65300.40))
             .andExpect(jsonPath("$.candles[0].volume").value(123.45))
             .andExpect(jsonPath("$.candles[1].time").value(1785142800L));
+
+        assertEquals(1785146400L, candleHistory.before);
+        assertEquals(1000, candleHistory.limit);
+    }
+
+    @Test
+    void rejectsInvalidCandlePaginationParameters() throws Exception
+    {
+        int callsBeforeRequest = candleHistory.calls;
+
+        mockMvc.perform(get("/api/paper-trading/btc-candles")
+                .param("before", "0")
+                .param("limit", "2001")
+                .session(authenticatedSession()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/paper-trading/btc-candles")
+                .param("before", "not-a-number")
+                .session(authenticatedSession()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+            .andExpect(jsonPath("$.message").value(
+                "Request parameter has an invalid type"
+            ));
+
+        assertEquals(callsBeforeRequest, candleHistory.calls);
     }
 
     private static MockHttpSession authenticatedSession()
@@ -204,10 +237,19 @@ class PaperTradingControllerTests
     static final class StubCandleHistory implements CandleHistoryQuery
     {
         private BtcCandlesResponse response;
+        private Long before;
+        private Integer limit;
+        private int calls;
 
         @Override
-        public BtcCandlesResponse getBtcCandles()
+        public BtcCandlesResponse getBtcCandles(
+            Long requestedBefore,
+            Integer requestedLimit
+        )
         {
+            calls++;
+            before = requestedBefore;
+            limit = requestedLimit;
             return response;
         }
     }

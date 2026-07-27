@@ -61,7 +61,9 @@ candles into PostgreSQL. Later starts resume after the latest stored candle.
 One Binance WebSocket connection supplies the current candle to all connected
 browser clients, while a periodic reconciliation repairs data missed during a
 disconnect. The history API returns the latest 2,000 stored candles; the full
-history remains durable in PostgreSQL.
+history remains durable in PostgreSQL. As a user drags the chart left, the
+frontend requests older 1,000-candle pages from PostgreSQL with an exclusive
+timestamp cursor and stops after reaching Binance's first candle.
 
 The market-data pipeline currently assumes one backend instance. When the API
 is scaled to multiple instances, run ingestion on one elected worker, disable

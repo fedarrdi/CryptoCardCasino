@@ -546,6 +546,62 @@ main {
   height: 470px;
 }
 
+.older-history-status {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  max-width: min(360px, calc(100% - 28px));
+  padding: 8px 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #30352f;
+  border-radius: 8px;
+  color: #9da59a;
+  background: rgba(20, 24, 20, 0.94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.older-history-spinner {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  border: 1px solid #475046;
+  border-top-color: #c0f25d;
+  border-radius: 50%;
+  animation: chart-spin 800ms linear infinite;
+}
+
+.older-history-error {
+  color: #ffb2a7;
+  border-color: rgba(255, 112, 92, 0.3);
+}
+
+.older-history-error span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.older-history-error button {
+  padding: 2px 0 2px 9px;
+  flex: 0 0 auto;
+  border: 0;
+  border-left: 1px solid rgba(255, 112, 92, 0.3);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
 .chart-overlay {
   position: absolute;
   inset: 0;
@@ -792,7 +848,8 @@ footer {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chart-loader {
+  .chart-loader,
+  .older-history-spinner {
     animation-duration: 1.8s;
   }
 }

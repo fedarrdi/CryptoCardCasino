@@ -6,6 +6,7 @@ import {
   createChart,
   type CandlestickData,
   type ISeriesApi,
+  type LogicalRangeChangeEventHandler,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
@@ -20,6 +21,7 @@ import {
 
 type HistoryStatus = 'loading' | 'ready' | 'empty' | 'error'
 type StreamStatus = 'connecting' | 'live' | 'reconnecting' | 'waiting'
+type OlderHistoryStatus = 'idle' | 'loading' | 'exhausted' | 'error'
 
 type BtcChartProps = {
   onSessionExpired: () => void
@@ -28,6 +30,8 @@ type BtcChartProps = {
 const SOCKET_CONNECT_TIMEOUT_MS = 10_000
 const STREAM_STALE_TIMEOUT_MS = 20_000
 const SESSION_REVALIDATION_MS = 5 * 60_000
+const OLDER_HISTORY_PAGE_SIZE = 1_000
+const OLDER_HISTORY_LOAD_THRESHOLD = 100
 
 const priceFormatter = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -124,7 +128,13 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
     useState<StreamStatus>('connecting')
   const [latestCandle, setLatestCandle] = useState<MarketCandle | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [olderHistoryStatus, setOlderHistoryStatus] =
+    useState<OlderHistoryStatus>('idle')
+  const [olderHistoryError, setOlderHistoryError] = useState<string | null>(
+    null,
+  )
   const [reloadKey, setReloadKey] = useState(0)
+  const loadOlderHistoryRef = useRef<() => void>(() => undefined)
 
   useEffect(() => {
     const container = containerRef.current
@@ -136,19 +146,29 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
     let disposed = false
     let socket: WebSocket | null = null
     let historyController: AbortController | null = null
+    let olderHistoryController: AbortController | null = null
     let reconnectTimer: number | null = null
     let socketConnectTimer: number | null = null
     let streamStaleTimer: number | null = null
+    let olderHistoryArmFrame: number | null = null
     let reconnectAttempt = 0
     let cycleId = 0
     let hasLoadedHistory = false
+    let olderHistoryLoadingArmed = false
+    let olderHistoryInFlight = false
+    let hasMoreHistory = false
+    let nextBefore: number | null = null
     let sessionValidationInFlight = false
+    const candlesByTime = new Map<number, MarketCandle>()
+    const closedCandleTimes = new Set<number>()
     const sessionController = new AbortController()
 
     setHistoryStatus('loading')
     setStreamStatus('connecting')
     setLatestCandle(null)
     setError(null)
+    setOlderHistoryStatus('idle')
+    setOlderHistoryError(null)
 
     const chart = createChart(container, {
       autoSize: true,
@@ -210,6 +230,175 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
         },
       },
     )
+
+    function orderedCandles(): MarketCandle[] {
+      return [...candlesByTime.values()].sort(
+        (left, right) => left.time - right.time,
+      )
+    }
+
+    function validateHistoryPageMetadata(
+      history: Awaited<ReturnType<typeof getBtcCandles>>,
+    ) {
+      const firstCandleTime = history.candles.at(0)?.time
+
+      if (
+        history.hasMore &&
+        (firstCandleTime === undefined ||
+          history.nextBefore !== firstCandleTime)
+      ) {
+        throw new Error(
+          'The candle-history cursor must equal the oldest returned candle.',
+        )
+      }
+    }
+
+    function applyHistoryPageMetadata(
+      history: Awaited<ReturnType<typeof getBtcCandles>>,
+    ) {
+      validateHistoryPageMetadata(history)
+
+      hasMoreHistory = history.hasMore
+      nextBefore = history.nextBefore
+      setOlderHistoryStatus(history.hasMore ? 'idle' : 'exhausted')
+      setOlderHistoryError(null)
+    }
+
+    async function loadOlderHistory() {
+      if (
+        disposed ||
+        !olderHistoryLoadingArmed ||
+        olderHistoryInFlight ||
+        !hasMoreHistory
+      ) {
+        return
+      }
+
+      if (nextBefore === null) {
+        throw new Error(
+          'Cannot load older candles without a pagination cursor.',
+        )
+      }
+
+      const requestedBefore = nextBefore
+      const controller = new AbortController()
+      olderHistoryController = controller
+      olderHistoryInFlight = true
+      setOlderHistoryStatus('loading')
+      setOlderHistoryError(null)
+
+      try {
+        const history = await getBtcCandles({
+          before: requestedBefore,
+          limit: OLDER_HISTORY_PAGE_SIZE,
+          signal: controller.signal,
+        })
+
+        if (disposed || controller.signal.aborted) {
+          return
+        }
+
+        validateHistoryPageMetadata(history)
+
+        if (
+          history.candles.some((candle) => candle.time >= requestedBefore)
+        ) {
+          throw new Error(
+            'The candle-history response contains a candle outside the requested page.',
+          )
+        }
+
+        if (
+          history.hasMore &&
+          (history.nextBefore === null ||
+            history.nextBefore >= requestedBefore)
+        ) {
+          throw new Error(
+            'The candle-history pagination cursor did not move backwards.',
+          )
+        }
+
+        const visibleRange = chart.timeScale().getVisibleLogicalRange()
+        const previouslyOrdered = orderedCandles()
+        const previousOldestTime = previouslyOrdered.at(0)?.time
+        let insertedBefore = 0
+
+        for (const candle of history.candles) {
+          if (
+            !candlesByTime.has(candle.time) &&
+            (previousOldestTime === undefined ||
+              candle.time < previousOldestTime)
+          ) {
+            insertedBefore += 1
+          }
+
+          candlesByTime.set(candle.time, candle)
+          closedCandleTimes.add(candle.time)
+        }
+
+        candleSeries.setData(orderedCandles().map(toChartCandle))
+
+        if (visibleRange !== null && insertedBefore > 0) {
+          chart.timeScale().setVisibleLogicalRange({
+            from: visibleRange.from + insertedBefore,
+            to: visibleRange.to + insertedBefore,
+          })
+        }
+
+        applyHistoryPageMetadata(history)
+      } catch (requestError) {
+        if (disposed || controller.signal.aborted) {
+          return
+        }
+
+        if (
+          requestError instanceof ApiError &&
+          requestError.status === 401
+        ) {
+          onSessionExpired()
+          return
+        }
+
+        setOlderHistoryError(chartErrorMessage(requestError))
+        setOlderHistoryStatus('error')
+      } finally {
+        if (olderHistoryController === controller) {
+          olderHistoryController = null
+        }
+
+        olderHistoryInFlight = false
+      }
+    }
+
+    loadOlderHistoryRef.current = () => {
+      void loadOlderHistory()
+    }
+
+    const onVisibleLogicalRangeChange: LogicalRangeChangeEventHandler = (
+      visibleRange,
+    ) => {
+      if (
+        visibleRange === null ||
+        !olderHistoryLoadingArmed ||
+        olderHistoryInFlight ||
+        !hasMoreHistory
+      ) {
+        return
+      }
+
+      const bars = candleSeries.barsInLogicalRange(visibleRange)
+
+      if (
+        bars !== null &&
+        bars.barsBefore < OLDER_HISTORY_LOAD_THRESHOLD
+      ) {
+        void loadOlderHistory()
+      }
+    }
+
+    chart
+      .timeScale()
+      .subscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange)
 
     function clearSocketTimers() {
       if (socketConnectTimer !== null) {
@@ -284,6 +473,12 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
               !candle.closed))
         ) {
           return false
+        }
+
+        candlesByTime.set(candle.time, candle)
+
+        if (candle.closed) {
+          closedCandleTimes.add(candle.time)
         }
 
         candleSeries.update(toChartCandle(candle))
@@ -378,24 +573,38 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
 
       async function reconcileHistory() {
         try {
-          const history = await getBtcCandles(
-            currentHistoryController.signal,
-          )
+          const history = await getBtcCandles({
+            signal: currentHistoryController.signal,
+          })
 
           if (!isCurrentCycle()) {
             return
           }
 
-          const shouldFitContent = !hasLoadedHistory
-          const latestHistoricalCandle = history.candles.at(-1) ?? null
+          const shouldEstablishInitialViewport = !hasLoadedHistory
+
+          if (shouldEstablishInitialViewport) {
+            applyHistoryPageMetadata(history)
+          }
+
+          for (const candle of history.candles) {
+            candlesByTime.set(candle.time, candle)
+            closedCandleTimes.add(candle.time)
+          }
+
+          const synchronizedCandles = orderedCandles()
+          const latestSynchronizedCandle =
+            synchronizedCandles.at(-1) ?? null
           const bufferedUpdates = [...bufferedCandles.values()].sort(
             (left, right) => left.time - right.time,
           )
-          let newestCandle: MarketCandle | null = latestHistoricalCandle
+          let newestCandle: MarketCandle | null = latestSynchronizedCandle
 
-          candleSeries.setData(history.candles.map(toChartCandle))
-          latestAppliedTime = latestHistoricalCandle?.time ?? null
-          latestAppliedClosed = latestHistoricalCandle !== null
+          candleSeries.setData(synchronizedCandles.map(toChartCandle))
+          latestAppliedTime = latestSynchronizedCandle?.time ?? null
+          latestAppliedClosed =
+            latestAppliedTime !== null &&
+            closedCandleTimes.has(latestAppliedTime)
 
           for (const candle of bufferedUpdates) {
             if (applyLiveCandle(candle)) {
@@ -410,8 +619,17 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
           setLatestCandle(newestCandle)
           setHistoryStatus(newestCandle === null ? 'empty' : 'ready')
 
-          if (shouldFitContent && newestCandle !== null) {
-            chart.timeScale().fitContent()
+          if (shouldEstablishInitialViewport && newestCandle !== null) {
+            chart.timeScale().resetTimeScale()
+            olderHistoryArmFrame = window.requestAnimationFrame(() => {
+              olderHistoryArmFrame = null
+
+              if (!disposed) {
+                olderHistoryLoadingArmed = true
+              }
+            })
+          } else if (newestCandle !== null) {
+            olderHistoryLoadingArmed = true
           }
 
           markLiveWhenSynchronized()
@@ -497,9 +715,19 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
       disposed = true
       cycleId += 1
       historyController?.abort()
+      olderHistoryController?.abort()
       sessionController.abort()
       window.clearInterval(sessionTimer)
       clearSocketTimers()
+      loadOlderHistoryRef.current = () => undefined
+
+      if (olderHistoryArmFrame !== null) {
+        window.cancelAnimationFrame(olderHistoryArmFrame)
+      }
+
+      chart
+        .timeScale()
+        .unsubscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange)
 
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer)
@@ -590,6 +818,30 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
           aria-label="Interactive one-hour BTC USDT candlestick chart"
         />
 
+        {historyStatus === 'ready' &&
+          olderHistoryStatus === 'loading' && (
+            <div className="older-history-status" role="status">
+              <span className="older-history-spinner" />
+              Loading older candles
+            </div>
+          )}
+
+        {historyStatus === 'ready' &&
+          olderHistoryStatus === 'error' && (
+            <div
+              className="older-history-status older-history-error"
+              role="alert"
+            >
+              <span>{olderHistoryError}</span>
+              <button
+                type="button"
+                onClick={() => loadOlderHistoryRef.current()}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
         {historyStatus === 'loading' && (
           <div className="chart-overlay" role="status">
             <span className="chart-loader" />
@@ -628,7 +880,7 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
 
       <div className="chart-footer">
         <span>Binance 1-hour trade-price candles</span>
-        <span>Scroll to zoom · drag to explore</span>
+        <span>Scroll to zoom · drag left to load history</span>
       </div>
     </section>
   )

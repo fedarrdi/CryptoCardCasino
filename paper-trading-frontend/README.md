@@ -7,7 +7,7 @@ includes:
 - An on-demand BTC/USDT midpoint
 - A responsive 1-hour candlestick chart built with TradingView Lightweight
   Charts 5.2
-- Historical candle loading followed by live WebSocket updates
+- Paginated historical candle loading followed by live WebSocket updates
 
 The chart is only initialized after the wallet session is authenticated.
 
@@ -52,6 +52,8 @@ The authenticated response contains ordered 1-hour BTC/USDT candles:
 {
   "symbol": "BTCUSDT",
   "interval": "1h",
+  "hasMore": true,
+  "nextBefore": 1785106800,
   "candles": [
     {
       "time": 1785106800,
@@ -64,6 +66,21 @@ The authenticated response contains ordered 1-hour BTC/USDT candles:
   ]
 }
 ```
+
+The initial request returns the latest configured page. When the user pans
+within 100 candles of the chart's left edge, the frontend requests the next
+older page:
+
+```text
+GET /api/paper-trading/btc-candles?before=1785106800&limit=1000
+```
+
+`before` is an exclusive epoch-seconds cursor. When `hasMore` is true,
+`nextBefore` is the oldest candle's timestamp in that response. Each response
+is merged by timestamp in ascending order and prepended without moving the
+user's current viewport. Only one historical request can be active at a time,
+and loading stops when `hasMore` is false. Already-loaded history remains in
+the chart through live updates and WebSocket reconciliation.
 
 After history is loaded, the chart connects to:
 

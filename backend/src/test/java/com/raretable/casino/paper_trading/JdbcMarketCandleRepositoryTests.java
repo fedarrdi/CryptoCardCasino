@@ -34,7 +34,9 @@ class JdbcMarketCandleRepositoryTests
         repository.upsertAll(List.of(
             candle(first, "65000.10"),
             candle(second, "65100.20"),
-            candle(third, "65200.30")
+            candle(third, "65200.30"),
+            candle("ETHUSDT", "1h", second, "3200.10"),
+            candle("BTCUSDT", "5m", second, "65125.20")
         ));
         repository.upsertAll(List.of(candle(second, "65150.25")));
 
@@ -59,18 +61,46 @@ class JdbcMarketCandleRepositoryTests
             3,
             repository.findLatest("BTCUSDT", "1h", 10).size()
         );
+
+        List<StoredCandle> preceding = repository.findBefore(
+            "BTCUSDT",
+            "1h",
+            third,
+            10
+        );
+        assertEquals(
+            List.of(first, second),
+            preceding.stream().map(StoredCandle::openTime).toList()
+        );
+        assertEquals(
+            List.of(second),
+            repository.findBefore("BTCUSDT", "1h", third, 1)
+                .stream()
+                .map(StoredCandle::openTime)
+                .toList()
+        );
     }
 
     private static StoredCandle candle(Instant openTime, String close)
     {
+        return candle("BTCUSDT", "1h", openTime, close);
+    }
+
+    private static StoredCandle candle(
+        String symbol,
+        String interval,
+        Instant openTime,
+        String close
+    )
+    {
         BigDecimal closingPrice = new BigDecimal(close);
         return new StoredCandle(
-            "BTCUSDT",
-            "1h",
+            symbol,
+            interval,
             openTime,
-            new BigDecimal("65000.00"),
-            new BigDecimal("66000.00"),
-            new BigDecimal("64000.00"),
+            closingPrice,
+            closingPrice,
+            closingPrice,
             closingPrice,
             new BigDecimal("123.45")
         );

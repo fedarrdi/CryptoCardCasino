@@ -96,6 +96,47 @@ public class JdbcMarketCandleRepository implements MarketCandleRepository
     }
 
     @Override
+    public List<StoredCandle> findBefore(
+        String symbol,
+        String interval,
+        Instant before,
+        int limit
+    )
+    {
+        return jdbcClient.sql("""
+                SELECT symbol, candle_interval, open_time,
+                       open, high, low, close, volume
+                FROM
+                (
+                    SELECT symbol, candle_interval, open_time,
+                           open, high, low, close, volume
+                    FROM market_candles
+                    WHERE symbol = :symbol
+                      AND candle_interval = :interval
+                      AND open_time < :before
+                    ORDER BY open_time DESC
+                    LIMIT :limit
+                ) preceding
+                ORDER BY open_time ASC
+                """)
+            .param("symbol", symbol)
+            .param("interval", interval)
+            .param("before", Timestamp.from(before))
+            .param("limit", limit)
+            .query((resultSet, rowNumber) -> new StoredCandle(
+                resultSet.getString("symbol"),
+                resultSet.getString("candle_interval"),
+                resultSet.getTimestamp("open_time").toInstant(),
+                resultSet.getBigDecimal("open"),
+                resultSet.getBigDecimal("high"),
+                resultSet.getBigDecimal("low"),
+                resultSet.getBigDecimal("close"),
+                resultSet.getBigDecimal("volume")
+            ))
+            .list();
+    }
+
+    @Override
     @Transactional
     public void upsertAll(List<StoredCandle> candles)
     {
