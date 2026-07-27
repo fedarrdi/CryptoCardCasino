@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.raretable.casino.auth.RateLimitExceededException;
 import com.raretable.casino.auth.WalletAuthenticationException;
+import com.raretable.casino.paper_trading.MarketDataSynchronizingException;
 import com.raretable.casino.table.TableNotFoundException;
 import com.raretable.casino.user.UserNotFoundException;
 
@@ -42,6 +43,15 @@ public final class ApiExceptionHandler
     {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(new ApiError("NOT_FOUND", exception.getMessage()));
+    }
+
+    @ExceptionHandler(MarketDataSynchronizingException.class)
+    public ResponseEntity<ApiError> handleMarketDataSynchronizing(
+        MarketDataSynchronizingException exception
+    )
+    {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(new ApiError("MARKET_DATA_SYNCHRONIZING", exception.getMessage()));
     }
 
     @ExceptionHandler({IllegalArgumentException.class, IndexOutOfBoundsException.class})

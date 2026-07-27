@@ -11,10 +11,15 @@ public final class PaperTradingController
     private static final String BTC_USDT_SYMBOL = "BTCUSDT";
 
     private final BinanceWrapper binanceWrapper;
+    private final CandleHistoryQuery candleHistory;
 
-    public PaperTradingController(BinanceWrapper binanceWrapper)
+    public PaperTradingController(
+        BinanceWrapper binanceWrapper,
+        CandleHistoryQuery candleHistory
+    )
     {
         this.binanceWrapper = binanceWrapper;
+        this.candleHistory = candleHistory;
     }
 
     @GetMapping("/btc-price")
@@ -24,5 +29,11 @@ public final class PaperTradingController
             BTC_USDT_SYMBOL,
             binanceWrapper.getBtcPrice()
         );
+    }
+
+    @GetMapping("/btc-candles")
+    public BtcCandlesResponse getBtcCandles()
+    {
+        return candleHistory.getBtcCandles();
     }
 }

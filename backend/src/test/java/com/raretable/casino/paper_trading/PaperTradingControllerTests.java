@@ -51,10 +51,29 @@ class PaperTradingControllerTests
     @Autowired
     private StubBinanceWrapper binanceWrapper;
 
+    @Autowired
+    private StubCandleHistory candleHistory;
+
     @Test
     void btcPriceRequiresAuthentication() throws Exception
     {
         mockMvc.perform(get("/api/paper-trading/btc-price"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
+    }
+
+    @Test
+    void btcCandlesRequireAuthentication() throws Exception
+    {
+        mockMvc.perform(get("/api/paper-trading/btc-candles"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
+    }
+
+    @Test
+    void marketDataWebSocketRequiresAuthentication() throws Exception
+    {
+        mockMvc.perform(get("/ws/market-data/btcusdt/1h"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
     }
@@ -74,6 +93,47 @@ class PaperTradingControllerTests
             .andExpect(jsonPath("$.price").value(65432.125));
 
         assertEquals(callsBeforeRequest + 1, binanceWrapper.calls);
+    }
+
+    @Test
+    void returnsBtcUsdtOneHourCandles() throws Exception
+    {
+        candleHistory.response = new BtcCandlesResponse(
+            "BTCUSDT",
+            "1h",
+            List.of(
+                new BtcCandle(
+                    1785139200,
+                    new BigDecimal("65000.10"),
+                    new BigDecimal("65500.20"),
+                    new BigDecimal("64900.30"),
+                    new BigDecimal("65300.40"),
+                    new BigDecimal("123.45")
+                ),
+                new BtcCandle(
+                    1785142800,
+                    new BigDecimal("65300.40"),
+                    new BigDecimal("65700.50"),
+                    new BigDecimal("65200.60"),
+                    new BigDecimal("65600.70"),
+                    new BigDecimal("98.76")
+                )
+            )
+        );
+
+        mockMvc.perform(get("/api/paper-trading/btc-candles")
+                .session(authenticatedSession()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.symbol").value("BTCUSDT"))
+            .andExpect(jsonPath("$.interval").value("1h"))
+            .andExpect(jsonPath("$.candles.length()").value(2))
+            .andExpect(jsonPath("$.candles[0].time").value(1785139200L))
+            .andExpect(jsonPath("$.candles[0].open").value(65000.10))
+            .andExpect(jsonPath("$.candles[0].high").value(65500.20))
+            .andExpect(jsonPath("$.candles[0].low").value(64900.30))
+            .andExpect(jsonPath("$.candles[0].close").value(65300.40))
+            .andExpect(jsonPath("$.candles[0].volume").value(123.45))
+            .andExpect(jsonPath("$.candles[1].time").value(1785142800L));
     }
 
     private static MockHttpSession authenticatedSession()
@@ -111,6 +171,12 @@ class PaperTradingControllerTests
         }
 
         @Bean
+        StubCandleHistory candleHistory()
+        {
+            return new StubCandleHistory();
+        }
+
+        @Bean
         Clock clock()
         {
             return Clock.fixed(NOW, ZoneOffset.UTC);
@@ -132,6 +198,17 @@ class PaperTradingControllerTests
         {
             calls++;
             return price;
+        }
+    }
+
+    static final class StubCandleHistory implements CandleHistoryQuery
+    {
+        private BtcCandlesResponse response;
+
+        @Override
+        public BtcCandlesResponse getBtcCandles()
+        {
+            return response;
         }
     }
 }

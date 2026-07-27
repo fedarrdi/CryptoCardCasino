@@ -52,7 +52,7 @@ public class SecurityConfig
             );
 
         http
-            .securityMatcher("/api/**")
+            .securityMatcher("/api/**", "/ws/**")
             .addFilterAfter(absoluteSessionLifetimeFilter, SecurityContextHolderFilter.class)
             .authorizeHttpRequests(authorize -> authorize
                 .requestMatchers(HttpMethod.POST, "/api/auth/challenges", "/api/auth/sessions")

@@ -15,6 +15,27 @@ export type BtcPrice = {
   price: number
 }
 
+export type MarketCandle = {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export type BtcCandleHistory = {
+  symbol: 'BTCUSDT'
+  interval: '1h'
+  candles: MarketCandle[]
+}
+
+export type BtcCandleUpdate = MarketCandle & {
+  symbol: 'BTCUSDT'
+  interval: '1h'
+  closed: boolean
+}
+
 type ApiErrorBody = {
   code: string
   message: string
@@ -84,6 +105,12 @@ export function createSession(
 
 export function getBtcPrice(): Promise<BtcPrice> {
   return requestJson<BtcPrice>('/api/paper-trading/btc-price')
+}
+
+export function getBtcCandles(signal?: AbortSignal): Promise<BtcCandleHistory> {
+  return requestJson<BtcCandleHistory>('/api/paper-trading/btc-candles', {
+    signal,
+  })
 }
 
 export async function deleteSession(): Promise<void> {

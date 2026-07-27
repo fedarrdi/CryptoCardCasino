@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import {
   ApiError,
@@ -10,6 +10,7 @@ import {
   type AuthenticatedUser,
   type BtcPrice,
 } from './api.ts'
+import { BtcChart, LockedBtcChart } from './BtcChart.tsx'
 import { connectMetaMask, signMessage } from './wallet.ts'
 
 type AuthStatus = 'checking' | 'unauthenticated' | 'authenticated'
@@ -133,6 +134,14 @@ function App() {
       setPendingAction(null)
     }
   }
+
+  const handleSessionExpired = useCallback(() => {
+    setUser(null)
+    setBtcPrice(null)
+    setFetchedAt(null)
+    setAuthStatus('unauthenticated')
+    setError('Your wallet session expired. Connect again to view market data.')
+  }, [])
 
   const isAuthenticated = authStatus === 'authenticated' && user !== null
 
@@ -272,6 +281,12 @@ function App() {
             </div>
           </aside>
         </section>
+
+        {isAuthenticated ? (
+          <BtcChart onSessionExpired={handleSessionExpired} />
+        ) : (
+          <LockedBtcChart />
+        )}
 
         {error !== null && (
           <div className="error-banner" role="alert">

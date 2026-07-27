@@ -5,8 +5,8 @@ interface lives in `paper-trading-frontend/`.
 
 ## Paper trading frontend
 
-The paper-trading interface supports MetaMask login and authenticated BTC/USDT
-mid-price requests.
+The paper-trading interface supports MetaMask login, authenticated BTC/USDT
+mid-price requests, and a live one-hour candlestick chart.
 
 ```bash
 cd paper-trading-frontend
@@ -14,10 +14,10 @@ npm install
 npm run dev
 ```
 
-It runs on `http://localhost:5173` and proxies `/api` requests to the backend at
-`http://localhost:8080`. Run this frontend separately from `frontend/`, because
-both development servers intentionally use port `5173` to match the development
-SIWE domain.
+It runs on `http://localhost:5173` and proxies `/api` requests and `/ws`
+WebSocket connections to the backend at `http://localhost:8080`. Run this
+frontend separately from `frontend/`, because both development servers
+intentionally use port `5173` to match the development SIWE domain.
 
 ## Frontend
 
@@ -55,6 +55,18 @@ SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 Flyway applies the database migrations automatically when the backend starts.
 The development profile connects to PostgreSQL at `localhost:5433` and Redis
 at `localhost:6379` using the settings declared in `compose.yaml`.
+
+On its first start, the backend downloads Binance's closed BTCUSDT one-hour
+candles into PostgreSQL. Later starts resume after the latest stored candle.
+One Binance WebSocket connection supplies the current candle to all connected
+browser clients, while a periodic reconciliation repairs data missed during a
+disconnect. The history API returns the latest 2,000 stored candles; the full
+history remains durable in PostgreSQL.
+
+The market-data pipeline currently assumes one backend instance. When the API
+is scaled to multiple instances, run ingestion on one elected worker, disable
+it on API-only replicas with `RARETABLE_MARKET_DATA_ENABLED=false`, and fan out
+updates through Redis Pub/Sub.
 
 Redis stores HTTP sessions, five-minute SIWE login challenges, and distributed
 authentication rate-limit counters. Session inactivity expires after 30

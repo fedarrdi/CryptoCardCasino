@@ -13,7 +13,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.raretable.casino.InfrastructureTestConfiguration;
 
-@SpringBootTest
+@SpringBootTest(properties = "raretable.market-data.enabled=false")
 @ActiveProfiles("dev")
 @Import(InfrastructureTestConfiguration.class)
 class DevProfileConfigurationTests

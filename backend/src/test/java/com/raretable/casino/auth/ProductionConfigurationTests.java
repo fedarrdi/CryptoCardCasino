@@ -18,7 +18,8 @@ import com.raretable.casino.security.WalletSessionProperties;
 @SpringBootTest(properties = {
     "raretable.auth.siwe.domain=raretable.example",
     "raretable.auth.siwe.uri=https://raretable.example",
-    "spring.data.redis.url=redis://localhost:6379"
+    "spring.data.redis.url=redis://localhost:6379",
+    "raretable.market-data.enabled=false"
 })
 @Import(InfrastructureTestConfiguration.class)
 class ProductionConfigurationTests
