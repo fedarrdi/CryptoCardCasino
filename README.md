@@ -68,6 +68,16 @@ a user drags the chart left, the frontend requests older 1,000-candle pages
 from PostgreSQL with an exclusive timestamp cursor and stops after reaching
 Binance's first candle.
 
+The backend paper-trading code is grouped by responsibility:
+
+- `paper_trading/api` contains HTTP endpoints and response records.
+- `paper_trading/market_data` contains the candle service and its contracts.
+- `paper_trading/market_data/binance` contains Binance ingestion clients and
+  lifecycle configuration.
+- `paper_trading/market_data/persistence` contains PostgreSQL repositories.
+- `paper_trading/market_data/websocket` contains browser WebSocket delivery.
+- `paper_trading/price` contains the retained standalone midpoint-price client.
+
 The market-data pipeline currently assumes one backend instance. When the API
 is scaled to multiple instances, run ingestion on one elected worker, disable
 it on API-only replicas with `RARETABLE_MARKET_DATA_ENABLED=false`, and fan out

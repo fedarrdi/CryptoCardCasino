@@ -11,7 +11,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 import com.raretable.casino.auth.RateLimitExceededException;
 import com.raretable.casino.auth.WalletAuthenticationException;
-import com.raretable.casino.paper_trading.MarketDataSynchronizingException;
+import com.raretable.casino.paper_trading.market_data.MarketDataSynchronizingException;
 import com.raretable.casino.table.TableNotFoundException;
 import com.raretable.casino.user.UserNotFoundException;
 
