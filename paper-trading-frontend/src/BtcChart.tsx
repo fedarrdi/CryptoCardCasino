@@ -4,7 +4,10 @@ import {
   ColorType,
   CrosshairMode,
   createChart,
+  LineStyle,
   type CandlestickData,
+  type CreatePriceLineOptions,
+  type IPriceLine,
   type ISeriesApi,
   type LogicalRangeChangeEventHandler,
   type Time,
@@ -19,6 +22,8 @@ import {
   type BtcCandleInterval,
   type BtcCandleUpdate,
   type MarketCandle,
+  type OpenPaperPosition,
+  type PositionSide,
 } from './api.ts'
 
 type HistoryStatus = 'loading' | 'ready' | 'empty' | 'error'
@@ -27,6 +32,12 @@ type OlderHistoryStatus = 'idle' | 'loading' | 'exhausted' | 'error'
 
 type BtcChartProps = {
   onSessionExpired: () => void
+  openPositions: readonly OpenPaperPosition[]
+}
+
+type PositionEntryLine = {
+  line: IPriceLine
+  fingerprint: string
 }
 
 const SOCKET_CONNECT_TIMEOUT_MS = 10_000
@@ -34,6 +45,10 @@ const STREAM_STALE_TIMEOUT_MS = 20_000
 const SESSION_REVALIDATION_MS = 5 * 60_000
 const OLDER_HISTORY_PAGE_SIZE = 1_000
 const OLDER_HISTORY_LOAD_THRESHOLD = 100
+const POSITION_ENTRY_COLORS: Record<PositionSide, string> = {
+  LONG: '#c0f25d',
+  SHORT: '#ff705c',
+}
 
 const INTERVAL_DETAILS: Record<
   BtcCandleInterval,
@@ -68,6 +83,68 @@ function toChartCandle(candle: MarketCandle): CandlestickData<Time> {
     high: candle.high,
     low: candle.low,
     close: candle.close,
+  }
+}
+
+function positionEntryLineOptions(
+  position: OpenPaperPosition,
+): CreatePriceLineOptions {
+  const color = POSITION_ENTRY_COLORS[position.side]
+
+  return {
+    id: position.id,
+    price: position.entryPrice,
+    color,
+    lineWidth: 2,
+    lineStyle: LineStyle.Solid,
+    lineVisible: true,
+    axisLabelVisible: true,
+    axisLabelColor: color,
+    axisLabelTextColor: '#101310',
+    title: `${position.side} ENTRY · ${position.leverage}×`,
+  }
+}
+
+function synchronizePositionEntryLines(
+  candleSeries: ISeriesApi<'Candlestick'>,
+  entryLines: Map<string, PositionEntryLine>,
+  openPositions: readonly OpenPaperPosition[],
+) {
+  const openPositionIds = new Set(
+    openPositions.map((position) => position.id),
+  )
+
+  for (const [positionId, entryLine] of entryLines) {
+    if (!openPositionIds.has(positionId)) {
+      candleSeries.removePriceLine(entryLine.line)
+      entryLines.delete(positionId)
+    }
+  }
+
+  for (const position of openPositions) {
+    const fingerprint = [
+      position.side,
+      position.entryPrice,
+      position.leverage,
+    ].join(':')
+    const existingLine = entryLines.get(position.id)
+
+    if (existingLine?.fingerprint === fingerprint) {
+      continue
+    }
+
+    const options = positionEntryLineOptions(position)
+
+    if (existingLine === undefined) {
+      entryLines.set(position.id, {
+        line: candleSeries.createPriceLine(options),
+        fingerprint,
+      })
+      continue
+    }
+
+    existingLine.line.applyOptions(options)
+    existingLine.fingerprint = fingerprint
   }
 }
 
@@ -141,8 +218,17 @@ function CandleValue({
   )
 }
 
-export function BtcChart({ onSessionExpired }: BtcChartProps) {
+export function BtcChart({
+  onSessionExpired,
+  openPositions,
+}: BtcChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const positionEntryLinesRef = useRef<Map<string, PositionEntryLine>>(
+    new Map(),
+  )
+  const openPositionsRef = useRef(openPositions)
+  openPositionsRef.current = openPositions
   const [selectedInterval, setSelectedInterval] =
     useState<BtcCandleInterval>('1h')
   const activeIntervalRef = useRef<BtcCandleInterval>('1h')
@@ -253,6 +339,12 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
           minMove: 0.01,
         },
       },
+    )
+    candleSeriesRef.current = candleSeries
+    synchronizePositionEntryLines(
+      candleSeries,
+      positionEntryLinesRef.current,
+      openPositionsRef.current,
     )
 
     function orderedCandles(): MarketCandle[] {
@@ -836,9 +928,26 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
         socket.close(1000, 'Chart closed')
       }
 
+      if (candleSeriesRef.current === candleSeries) {
+        candleSeriesRef.current = null
+        positionEntryLinesRef.current.clear()
+      }
+
       chart.remove()
     }
   }, [onSessionExpired, reloadKey, selectedInterval])
+
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current
+
+    if (candleSeries !== null) {
+      synchronizePositionEntryLines(
+        candleSeries,
+        positionEntryLinesRef.current,
+        openPositions,
+      )
+    }
+  }, [openPositions])
 
   const displayedStatus = statusLabel(historyStatus, streamStatus)
   const isLive = historyStatus === 'ready' && streamStatus === 'live'

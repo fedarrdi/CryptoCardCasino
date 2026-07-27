@@ -2,13 +2,17 @@ import { useCallback, useEffect, useState } from 'react'
 
 import {
   ApiError,
+  clearSessionCsrf,
   createLoginChallenge,
   createSession,
   deleteSession,
   getCurrentUser,
+  initializeSessionCsrf,
+  SessionUserMismatchError,
   type AuthenticatedUser,
 } from './api.ts'
-import { BtcChart, LockedBtcChart } from './BtcChart.tsx'
+import { LockedBtcChart } from './BtcChart.tsx'
+import { TradingWorkspace } from './TradingWorkspace.tsx'
 import { connectMetaMask, signMessage } from './wallet.ts'
 
 type AuthStatus = 'checking' | 'unauthenticated' | 'authenticated'
@@ -38,6 +42,12 @@ function App() {
     async function restoreSession() {
       try {
         const currentUser = await getCurrentUser(abortController.signal)
+
+        if (abortController.signal.aborted) {
+          return
+        }
+
+        await initializeSessionCsrf()
 
         if (!abortController.signal.aborted) {
           setUser(currentUser)
@@ -79,6 +89,8 @@ function App() {
         challenge.nonce,
         signature,
       )
+      clearSessionCsrf()
+      await initializeSessionCsrf()
 
       setUser(authenticatedUser)
       setAuthStatus('authenticated')
@@ -94,20 +106,28 @@ function App() {
     setError(null)
 
     try {
-      await deleteSession()
+      if (user === null) {
+        throw new Error('No authenticated wallet session is active.')
+      }
+      await deleteSession(user.userId)
       setUser(null)
       setAuthStatus('unauthenticated')
     } catch (requestError) {
-      setError(errorMessage(requestError))
+      if (requestError instanceof SessionUserMismatchError) {
+        handleSessionExpired()
+      } else {
+        setError(errorMessage(requestError))
+      }
     } finally {
       setPendingAction(null)
     }
   }
 
   const handleSessionExpired = useCallback(() => {
+    clearSessionCsrf()
     setUser(null)
     setAuthStatus('unauthenticated')
-    setError('Your wallet session expired. Connect again to view market data.')
+    setError('Your wallet session expired. Connect again to continue paper trading.')
   }, [])
 
   const isAuthenticated = authStatus === 'authenticated' && user !== null
@@ -159,47 +179,62 @@ function App() {
         </div>
       </header>
 
-      <main>
-        <section className="intro">
-          <div>
-            <span className="eyebrow">Market sandbox · zero capital at risk</span>
-            <h1>Make the call.<br />Keep the lesson.</h1>
-          </div>
-          <p>
-            A focused paper-trading workspace for testing an idea against live
-            BTC market data—without putting real funds on the line.
-          </p>
-        </section>
-
-        <section className="workspace">
-          <aside className="side-panel">
-            <div>
-              <span className="panel-label">Session</span>
-              <h2>
-                {isAuthenticated ? `Welcome, ${user.name}` : 'Wallet required'}
-              </h2>
-              <p>
-                {isAuthenticated
-                  ? 'Your signed wallet session is active. No transaction or gas fee is required.'
-                  : 'Sign a one-time login message in MetaMask. This proves wallet ownership without moving funds.'}
-              </p>
-            </div>
-
-            <div className="data-source">
-              <span className="source-icon" aria-hidden="true">B</span>
-              <div>
-                <small>Market source</small>
-                <strong>Binance Spot</strong>
-              </div>
-              <span className="source-status">Stored history</span>
-            </div>
-          </aside>
-        </section>
-
+      <main className={isAuthenticated ? 'trading-main' : undefined}>
         {isAuthenticated ? (
-          <BtcChart onSessionExpired={handleSessionExpired} />
+          <>
+            <section className="dashboard-intro">
+              <div>
+                <span className="eyebrow">BTC paper trading · $10,000 starting balance</span>
+                <h1>Trade the move.<br />Risk only the lesson.</h1>
+              </div>
+              <p>
+                Market execution, 1–100× leverage, and account-wide cross
+                margin. Every position and realized result is saved to your
+                wallet profile.
+              </p>
+            </section>
+            <TradingWorkspace
+              key={user.userId}
+              expectedUserId={user.userId}
+              onSessionExpired={handleSessionExpired}
+            />
+          </>
         ) : (
-          <LockedBtcChart />
+          <>
+            <section className="intro">
+              <div>
+                <span className="eyebrow">Market sandbox · zero capital at risk</span>
+                <h1>Make the call.<br />Keep the lesson.</h1>
+              </div>
+              <p>
+                A focused paper-trading workspace for testing an idea against
+                live BTC market data—without putting real funds on the line.
+              </p>
+            </section>
+
+            <section className="workspace">
+              <aside className="side-panel">
+                <div>
+                  <span className="panel-label">Session</span>
+                  <h2>Wallet required</h2>
+                  <p>
+                    Sign a one-time login message in MetaMask. This proves
+                    wallet ownership without moving funds.
+                  </p>
+                </div>
+
+                <div className="data-source">
+                  <span className="source-icon" aria-hidden="true">B</span>
+                  <div>
+                    <small>Market source</small>
+                    <strong>Binance Spot</strong>
+                  </div>
+                  <span className="source-status">Stored history</span>
+                </div>
+              </aside>
+            </section>
+            <LockedBtcChart />
+          </>
         )}
 
         {error !== null && (

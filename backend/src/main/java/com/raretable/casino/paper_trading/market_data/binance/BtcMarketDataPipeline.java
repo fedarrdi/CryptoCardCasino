@@ -25,7 +25,7 @@ final class BtcMarketDataPipeline implements SmartLifecycle
         LoggerFactory.getLogger(BtcMarketDataPipeline.class);
 
     private final BtcCandleService candleService;
-    private final BinanceKlineWebSocketClient liveClient;
+    private final BinanceMarketDataWebSocketClient liveClient;
     private final MarketDataProperties properties;
     private final ScheduledExecutorService reconciliationExecutor =
         Executors.newSingleThreadScheduledExecutor(
@@ -38,7 +38,7 @@ final class BtcMarketDataPipeline implements SmartLifecycle
 
     BtcMarketDataPipeline(
         BtcCandleService candleService,
-        BinanceKlineWebSocketClient liveClient,
+        BinanceMarketDataWebSocketClient liveClient,
         MarketDataProperties properties
     )
     {
@@ -81,8 +81,8 @@ final class BtcMarketDataPipeline implements SmartLifecycle
 
         try
         {
-            candleService.reconcileAll();
             liveClient.start();
+            candleService.reconcileAll();
             scheduleReconciliation(properties.reconciliationInterval().toMillis());
         }
         catch (RuntimeException exception)

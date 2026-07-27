@@ -18,23 +18,27 @@ import org.springframework.stereotype.Component;
 import com.raretable.casino.paper_trading.market_data.BtcCandleService;
 import com.raretable.casino.paper_trading.market_data.LiveBtcCandle;
 import com.raretable.casino.paper_trading.market_data.websocket.MarketDataWebSocketHandler;
+import com.raretable.casino.paper_trading.price.BinanceWrapper;
+import com.raretable.casino.paper_trading.trading.PaperTradingRiskMonitor;
 
 @Component
-final class BinanceKlineWebSocketClient
+final class BinanceMarketDataWebSocketClient
 {
     private static final Logger LOGGER =
-        LoggerFactory.getLogger(BinanceKlineWebSocketClient.class);
+        LoggerFactory.getLogger(BinanceMarketDataWebSocketClient.class);
 
     private final HttpClient httpClient;
     private final MarketDataProperties properties;
     private final BinanceWebSocketMessageParser parser;
     private final BtcCandleService candleService;
     private final MarketDataWebSocketHandler browserClients;
+    private final PaperTradingRiskMonitor riskMonitor;
+    private final BinanceWrapper binance;
     private final ScheduledExecutorService reconnectExecutor =
         Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform()
                 .daemon(true)
-                .name("binance-kline-reconnect")
+                .name("binance-market-data-reconnect")
                 .factory()
         );
     private final AtomicBoolean running = new AtomicBoolean();
@@ -44,12 +48,14 @@ final class BinanceKlineWebSocketClient
     private final AtomicReference<ScheduledFuture<?>> reconnectTask =
         new AtomicReference<>();
 
-    BinanceKlineWebSocketClient(
+    BinanceMarketDataWebSocketClient(
         HttpClient httpClient,
         MarketDataProperties properties,
         BinanceWebSocketMessageParser parser,
         BtcCandleService candleService,
-        MarketDataWebSocketHandler browserClients
+        MarketDataWebSocketHandler browserClients,
+        PaperTradingRiskMonitor riskMonitor,
+        BinanceWrapper binance
     )
     {
         this.httpClient = httpClient;
@@ -57,6 +63,8 @@ final class BinanceKlineWebSocketClient
         this.parser = parser;
         this.candleService = candleService;
         this.browserClients = browserClients;
+        this.riskMonitor = riskMonitor;
+        this.binance = binance;
     }
 
     void start()
@@ -81,6 +89,7 @@ final class BinanceKlineWebSocketClient
         }
 
         browserClients.clearLiveSnapshots();
+        binance.clearBtcQuote();
         WebSocket webSocket = connection.getAndSet(null);
         if (webSocket != null)
         {
@@ -136,12 +145,27 @@ final class BinanceKlineWebSocketClient
     {
         try
         {
-            LiveBtcCandle candle = parser.parse(message);
-            if (candle.closed())
+            BinanceStreamEvent event = parser.parse(message);
+            if (event instanceof BinanceCandleStreamEvent candleEvent)
             {
-                candleService.storeClosed(candle);
+                LiveBtcCandle candle = candleEvent.candle();
+                if (candle.closed())
+                {
+                    candleService.storeClosed(candle);
+                }
+                browserClients.broadcast(candle);
             }
-            browserClients.broadcast(candle);
+            else if (event instanceof BinanceTradeStreamEvent tradeEvent)
+            {
+                riskMonitor.accept(
+                    tradeEvent.price(),
+                    tradeEvent.observedAt()
+                );
+            }
+            else if (event instanceof BinanceBookTickerStreamEvent bookEvent)
+            {
+                binance.updateBtcQuote(bookEvent.quote());
+            }
             webSocket.request(1);
         }
         catch (RuntimeException exception)
@@ -158,6 +182,7 @@ final class BinanceKlineWebSocketClient
         if (activeConnection)
         {
             browserClients.clearLiveSnapshots();
+            binance.clearBtcQuote();
             scheduleReconnect();
         }
     }
@@ -178,9 +203,8 @@ final class BinanceKlineWebSocketClient
 
             try
             {
-                candleService.reconcileAll();
                 LOGGER.info(
-                    "Connected to the Binance BTCUSDT combined kline stream"
+                    "Connected to the Binance BTCUSDT market-data streams"
                 );
                 webSocket.request(1);
             }
@@ -223,6 +247,7 @@ final class BinanceKlineWebSocketClient
             if (activeConnection)
             {
                 browserClients.clearLiveSnapshots();
+                binance.clearBtcQuote();
             }
             LOGGER.info(
                 "Binance kline stream closed with status {}",

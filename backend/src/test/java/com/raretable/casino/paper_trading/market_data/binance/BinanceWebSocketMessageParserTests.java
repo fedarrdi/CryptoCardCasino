@@ -2,6 +2,7 @@ package com.raretable.casino.paper_trading.market_data.binance;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -22,7 +23,7 @@ class BinanceWebSocketMessageParserTests
     @Test
     void mapsCurrentKlineToEpochSeconds()
     {
-        LiveBtcCandle candle = parser.parse(message("1h", false));
+        LiveBtcCandle candle = candle(message("1h", false));
 
         assertEquals("BTCUSDT", candle.symbol());
         assertEquals("1h", candle.interval());
@@ -38,7 +39,7 @@ class BinanceWebSocketMessageParserTests
     @Test
     void mapsBinanceClosedFlag()
     {
-        assertTrue(parser.parse(message("1h", true)).closed());
+        assertTrue(candle(message("1h", true)).closed());
     }
 
     @Test
@@ -48,9 +49,61 @@ class BinanceWebSocketMessageParserTests
         {
             assertEquals(
                 interval.value(),
-                parser.parse(message(interval.value(), false)).interval()
+                candle(message(interval.value(), false)).interval()
             );
         }
+    }
+
+    @Test
+    void mapsAggregateTradesForRiskControlEvaluation()
+    {
+        BinanceTradeStreamEvent event = assertInstanceOf(
+            BinanceTradeStreamEvent.class,
+            parser.parse("""
+                {
+                  "stream": "btcusdt@aggTrade",
+                  "data": {
+                    "e": "aggTrade",
+                    "s": "BTCUSDT",
+                    "p": "64999.12000000",
+                    "T": 1785140000123
+                  }
+                }
+                """)
+        );
+
+        assertEquals(new BigDecimal("64999.12000000"), event.price());
+        assertEquals(
+            java.time.Instant.parse("2026-07-27T08:13:20.123Z"),
+            event.observedAt()
+        );
+    }
+
+    @Test
+    void mapsBookTickerBidAndAsk()
+    {
+        BinanceBookTickerStreamEvent event = assertInstanceOf(
+            BinanceBookTickerStreamEvent.class,
+            parser.parse("""
+                {
+                  "stream": "btcusdt@bookTicker",
+                  "data": {
+                    "s": "BTCUSDT",
+                    "b": "64999.10000000",
+                    "a": "64999.30000000"
+                  }
+                }
+                """)
+        );
+
+        assertEquals(
+            new BigDecimal("64999.10000000"),
+            event.quote().bidPrice()
+        );
+        assertEquals(
+            new BigDecimal("64999.30000000"),
+            event.quote().askPrice()
+        );
     }
 
     @Test
@@ -84,6 +137,15 @@ class BinanceWebSocketMessageParserTests
                     .replace("\"s\": \"BTCUSDT\"", "\"s\": \"ETHUSDT\"")
             )
         );
+    }
+
+    private LiveBtcCandle candle(String message)
+    {
+        BinanceCandleStreamEvent event = assertInstanceOf(
+            BinanceCandleStreamEvent.class,
+            parser.parse(message)
+        );
+        return event.candle();
     }
 
     private static String message(String interval, boolean closed)

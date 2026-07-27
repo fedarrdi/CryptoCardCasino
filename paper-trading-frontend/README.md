@@ -4,12 +4,63 @@ Standalone React interface for wallet-authenticated BTC paper trading. It
 includes:
 
 - MetaMask wallet login with session restoration
+- A persistent $10,000 paper account with server-authoritative balance, equity,
+  available margin, and realized/unrealized PnL
+- Cross-margin BTC market positions in either direction with 1–100× leverage
+- Optional stop-loss and take-profit controls that can also be edited while a
+  position is open
+- An executable-quote PnL preview before a manual market close, plus open and
+  closed trade views
 - A responsive BTC/USDT candlestick chart with selectable 1h, 2h, 4h, 6h,
   8h, 12h, 1d, 3d, 1w, and 1M timeframes, built with TradingView Lightweight
   Charts 5.2
 - Paginated historical candle loading followed by live WebSocket updates
 
-The chart is only initialized after the wallet session is authenticated.
+The chart and trading workspace are only initialized after the wallet session
+is authenticated.
+
+## Trading contract
+
+The workspace polls the authoritative portfolio every four seconds:
+
+```text
+GET /api/paper-trading/portfolio?closedTradeLimit=50
+```
+
+This keeps account values and open positions marked to the current executable
+quote and makes server-triggered stop-loss or take-profit closures appear
+without a page reload.
+
+All trading controls are explicit: the order type is fixed to `MARKET`, margin
+mode is fixed to `CROSS`, direction is `LONG` or `SHORT`, and leverage must be
+between 1× and 100×. Positions are opened with:
+
+```text
+POST /api/paper-trading/positions
+```
+
+Each opening payload includes a client-generated `clientOrderId`. The backend
+stores it with a per-user uniqueness constraint, so retrying the same intended
+order cannot create a second position.
+
+Risk controls and manual closes use:
+
+```text
+PATCH /api/paper-trading/positions/{id}/risk-controls
+POST /api/paper-trading/positions/{id}/close
+```
+
+Every mutation returns a complete portfolio snapshot, which the UI applies
+immediately. Authenticated mutations use the session CSRF token from
+`GET /api/auth/csrf`; that token is acquired after session restoration or
+wallet login, reused for the current session, and cleared on authentication
+expiry or logout. Trading mutations also send the wallet ID displayed by the
+workspace in `X-Paper-Trading-User-Id`; the backend rejects the request if
+another tab has rotated the shared session to a different wallet. Portfolio
+snapshots carry the authoritative user ID and are rejected by the UI on the
+same mismatch. If a same-wallet session rotation invalidates CSRF, the UI
+revalidates identity and refreshes the token but asks the user to resubmit
+instead of blindly repeating a trading action.
 
 ## Run locally
 

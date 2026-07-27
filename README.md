@@ -5,9 +5,13 @@ interface lives in `paper-trading-frontend/`.
 
 ## Paper trading frontend
 
-The paper-trading interface supports MetaMask login and a live candlestick
-chart with every supported Binance Spot timeframe from one hour through one
-month.
+The paper-trading interface supports MetaMask login, a persistent $10,000
+simulated trading account, and a live candlestick chart with every supported
+Binance Spot timeframe from one hour through one month. Authenticated users can
+open BTCUSDT long or short market positions with 1–100× leverage, shared cross
+margin, and optional stop-loss/take-profit controls; monitor executable-close
+unrealized PnL; edit risk controls; close positions; and review durable trade
+history.
 
 ```bash
 cd paper-trading-frontend
@@ -60,13 +64,16 @@ at `localhost:6379` using the settings declared in `compose.yaml`.
 On its first start, the backend downloads Binance's closed BTCUSDT candles for
 `1h`, `2h`, `4h`, `6h`, `8h`, `12h`, `1d`, `3d`, `1w`, and `1M` into
 PostgreSQL. Later starts resume each timeframe after its latest stored candle.
-One combined Binance WebSocket connection supplies current candles to all
-connected browser clients, while periodic reconciliation repairs data missed
-during a disconnect. The history API returns the latest 2,000 stored candles
-for the selected timeframe; the full history remains durable in PostgreSQL. As
-a user drags the chart left, the frontend requests older 1,000-candle pages
-from PostgreSQL with an exclusive timestamp cursor and stops after reaching
-Binance's first candle.
+One combined Binance WebSocket connection supplies current candles, aggregate
+BTC trades, and the live best bid/ask. Candles are broadcast to connected
+browsers, aggregate trades drive server-side risk controls in chronological
+order, and the book ticker maintains the executable quote without making an
+external HTTP call inside a database transaction. Periodic reconciliation
+repairs candle data missed during a disconnect. The history API returns the
+latest 2,000 stored candles for the selected timeframe; the full history
+remains durable in PostgreSQL. As a user drags the chart left, the frontend
+requests older 1,000-candle pages from PostgreSQL with an exclusive timestamp
+cursor and stops after reaching Binance's first candle.
 
 The backend paper-trading code is grouped by responsibility:
 
@@ -76,7 +83,7 @@ The backend paper-trading code is grouped by responsibility:
   lifecycle configuration.
 - `paper_trading/market_data/persistence` contains PostgreSQL repositories.
 - `paper_trading/market_data/websocket` contains browser WebSocket delivery.
-- `paper_trading/price` contains the retained standalone midpoint-price client.
+- `paper_trading/price` contains the atomic live bid/ask snapshot.
 
 The market-data pipeline currently assumes one backend instance. When the API
 is scaled to multiple instances, run ingestion on one elected worker, disable
@@ -86,6 +93,33 @@ updates through Redis Pub/Sub.
 Redis stores HTTP sessions, five-minute SIWE login challenges, and distributed
 authentication rate-limit counters. Session inactivity expires after 30
 minutes, while the absolute authenticated-session lifetime is eight hours.
+
+## Paper-trading accounting
+
+Each user has one PostgreSQL-backed paper account. Its wallet balance starts at
+`$10,000` and changes only when PnL is realized:
+
+- requested notional = margin × leverage
+- equity = wallet balance + unrealized PnL across every open position
+- available margin = equity − margin committed across every open position
+- long positions open at the current ask and close/mark at the current bid
+- short positions open at the current bid and close/mark at the current ask
+
+All positions are explicitly stored as `MARKET` and `CROSS`. Account-row
+locking serializes margin admission and close settlement, so concurrent
+requests cannot allocate the same margin or realize one position twice.
+Every opening request carries a durable client order UUID, making a repeated
+request idempotent instead of creating a duplicate leveraged position.
+Stop-loss and take-profit evaluation runs on the backend from chronological
+aggregate-trade updates and therefore does not require the browser to remain
+open. Immutable risk-control revisions associate delayed market events with
+the controls that were effective at the event time; the latest live bid or ask
+is then used as the simulated market fill.
+
+Automatic liquidation is not part of this first version because a maintenance
+margin schedule has not been defined. Open losses remain account-wide and can
+make available margin negative; no further position can be admitted until
+available margin recovers.
 
 Run the backend tests with:
 

@@ -6,4 +6,9 @@ public final class MarketDataSynchronizingException extends RuntimeException
     {
         super("BTC candle history is still synchronizing");
     }
+
+    public MarketDataSynchronizingException(String message)
+    {
+        super(message);
+    }
 }
