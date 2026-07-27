@@ -1,6 +1,23 @@
 # CryptoCardCasino
 
-React frontend lives in `frontend/`.
+The card-game frontend lives in `frontend/`. The standalone paper-trading
+interface lives in `paper-trading-frontend/`.
+
+## Paper trading frontend
+
+The paper-trading interface supports MetaMask login and authenticated BTC/USDT
+mid-price requests.
+
+```bash
+cd paper-trading-frontend
+npm install
+npm run dev
+```
+
+It runs on `http://localhost:5173` and proxies `/api` requests to the backend at
+`http://localhost:8080`. Run this frontend separately from `frontend/`, because
+both development servers intentionally use port `5173` to match the development
+SIWE domain.
 
 ## Frontend
 
