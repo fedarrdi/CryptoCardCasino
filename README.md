@@ -5,9 +5,9 @@ interface lives in `paper-trading-frontend/`.
 
 ## Paper trading frontend
 
-The paper-trading interface supports MetaMask login, authenticated BTC/USDT
-mid-price requests, and a live candlestick chart with every supported Binance
-Spot timeframe from one hour through one month.
+The paper-trading interface supports MetaMask login and a live candlestick
+chart with every supported Binance Spot timeframe from one hour through one
+month.
 
 ```bash
 cd paper-trading-frontend

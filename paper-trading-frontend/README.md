@@ -4,7 +4,6 @@ Standalone React interface for wallet-authenticated BTC paper trading. It
 includes:
 
 - MetaMask wallet login with session restoration
-- An on-demand BTC/USDT midpoint
 - A responsive BTC/USDT candlestick chart with selectable 1h, 2h, 4h, 6h,
   8h, 12h, 1d, 3d, 1w, and 1M timeframes, built with TradingView Lightweight
   Charts 5.2

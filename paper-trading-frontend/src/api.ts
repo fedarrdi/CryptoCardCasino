@@ -10,11 +10,6 @@ export type LoginChallenge = {
   expiresAt: string
 }
 
-export type BtcPrice = {
-  symbol: string
-  price: number
-}
-
 export type MarketCandle = {
   time: number
   open: number
@@ -118,10 +113,6 @@ export function createSession(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nonce, signature }),
   })
-}
-
-export function getBtcPrice(): Promise<BtcPrice> {
-  return requestJson<BtcPrice>('/api/paper-trading/btc-price')
 }
 
 export type BtcCandleHistoryRequest = {

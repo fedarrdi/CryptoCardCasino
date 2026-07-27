@@ -5,21 +5,14 @@ import {
   createLoginChallenge,
   createSession,
   deleteSession,
-  getBtcPrice,
   getCurrentUser,
   type AuthenticatedUser,
-  type BtcPrice,
 } from './api.ts'
 import { BtcChart, LockedBtcChart } from './BtcChart.tsx'
 import { connectMetaMask, signMessage } from './wallet.ts'
 
 type AuthStatus = 'checking' | 'unauthenticated' | 'authenticated'
-type PendingAction = 'login' | 'price' | 'logout' | null
-
-const priceFormatter = new Intl.NumberFormat('en-US', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
+type PendingAction = 'login' | 'logout' | null
 
 function shortenAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`
@@ -36,8 +29,6 @@ function errorMessage(error: unknown): string {
 function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>('checking')
   const [user, setUser] = useState<AuthenticatedUser | null>(null)
-  const [btcPrice, setBtcPrice] = useState<BtcPrice | null>(null)
-  const [fetchedAt, setFetchedAt] = useState<Date | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -98,26 +89,6 @@ function App() {
     }
   }
 
-  async function handlePriceRequest() {
-    setPendingAction('price')
-    setError(null)
-
-    try {
-      const price = await getBtcPrice()
-      setBtcPrice(price)
-      setFetchedAt(new Date())
-    } catch (requestError) {
-      if (requestError instanceof ApiError && requestError.status === 401) {
-        setUser(null)
-        setAuthStatus('unauthenticated')
-      }
-
-      setError(errorMessage(requestError))
-    } finally {
-      setPendingAction(null)
-    }
-  }
-
   async function handleLogout() {
     setPendingAction('logout')
     setError(null)
@@ -125,8 +96,6 @@ function App() {
     try {
       await deleteSession()
       setUser(null)
-      setBtcPrice(null)
-      setFetchedAt(null)
       setAuthStatus('unauthenticated')
     } catch (requestError) {
       setError(errorMessage(requestError))
@@ -137,8 +106,6 @@ function App() {
 
   const handleSessionExpired = useCallback(() => {
     setUser(null)
-    setBtcPrice(null)
-    setFetchedAt(null)
     setAuthStatus('unauthenticated')
     setError('Your wallet session expired. Connect again to view market data.')
   }, [])
@@ -205,59 +172,6 @@ function App() {
         </section>
 
         <section className="workspace">
-          <article className="market-card">
-            <div className="market-heading">
-              <div className="asset">
-                <span className="bitcoin-mark">₿</span>
-                <div>
-                  <span className="pair">BTC / USDT</span>
-                  <span className="asset-name">Bitcoin</span>
-                </div>
-              </div>
-              <span className="live-pill"><i /> Live market</span>
-            </div>
-
-            <div className="price-block" aria-live="polite">
-              <span className="price-label">Current mid price</span>
-              <strong className={btcPrice === null ? 'price-empty' : ''}>
-                {btcPrice === null ? (
-                  '—'
-                ) : (
-                  <>
-                    {priceFormatter.format(btcPrice.price)} <em>USDT</em>
-                  </>
-                )}
-              </strong>
-              <span className="price-note">
-                {fetchedAt === null
-                  ? 'Best bid + best ask, divided by two'
-                  : `Fetched at ${fetchedAt.toLocaleTimeString()}`}
-              </span>
-            </div>
-
-            <button
-              className="price-button"
-              type="button"
-              onClick={handlePriceRequest}
-              disabled={!isAuthenticated || pendingAction !== null}
-            >
-              <span>
-                {pendingAction === 'price'
-                  ? 'Fetching Binance price…'
-                  : btcPrice === null
-                    ? 'Get BTC price'
-                    : 'Refresh BTC price'}
-              </span>
-              <span aria-hidden="true">↗</span>
-            </button>
-
-            {!isAuthenticated && authStatus !== 'checking' && (
-              <p className="locked-note">
-                Connect your wallet to request live market data.
-              </p>
-            )}
-          </article>
-
           <aside className="side-panel">
             <div>
               <span className="panel-label">Session</span>
@@ -277,7 +191,7 @@ function App() {
                 <small>Market source</small>
                 <strong>Binance Spot</strong>
               </div>
-              <span className="source-status">On request</span>
+              <span className="source-status">Stored history</span>
             </div>
           </aside>
         </section>
