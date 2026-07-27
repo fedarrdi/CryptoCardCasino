@@ -38,6 +38,8 @@ public final class PaperTradingController
 
     @GetMapping("/btc-candles")
     public BtcCandlesResponse getBtcCandles(
+        @RequestParam(name = "interval", defaultValue = "1h")
+        String interval,
         @RequestParam(name = "before", required = false)
         @Positive
         Long before,
@@ -47,6 +49,10 @@ public final class PaperTradingController
         Integer limit
     )
     {
-        return candleHistory.getBtcCandles(before, limit);
+        return candleHistory.getBtcCandles(
+            BtcCandleInterval.parse(interval),
+            before,
+            limit
+        );
     }
 }

@@ -19,7 +19,7 @@ import org.springframework.web.client.RestClient;
 class BinanceRestKlineClientTests
 {
     @Test
-    void requestsAndMapsPositionalOneHourKlines()
+    void requestsTheSelectedIntervalAndMapsPositionalKlines()
     {
         RestClient.Builder builder = RestClient.builder()
             .baseUrl("https://api.binance.com");
@@ -31,7 +31,7 @@ class BinanceRestKlineClientTests
                 requestTo(
                     "https://api.binance.com/api/v3/klines"
                         + "?symbol=BTCUSDT"
-                        + "&interval=1h"
+                        + "&interval=1M"
                         + "&startTime=1785139200000"
                         + "&limit=1000"
                 )
@@ -61,7 +61,8 @@ class BinanceRestKlineClientTests
 
         List<BinanceKline> result = new BinanceRestKlineClient(
             builder.build()
-        ).getBtcOneHourKlines(
+        ).getBtcKlines(
+            BtcCandleInterval.ONE_MONTH,
             Instant.ofEpochMilli(1785139200000L),
             1_000
         );

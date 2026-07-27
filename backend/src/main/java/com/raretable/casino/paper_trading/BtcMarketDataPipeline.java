@@ -79,7 +79,7 @@ final class BtcMarketDataPipeline implements SmartLifecycle
 
         try
         {
-            candleService.reconcile();
+            candleService.reconcileAll();
             liveClient.start();
             scheduleReconciliation(properties.reconciliationInterval().toMillis());
         }
@@ -99,7 +99,7 @@ final class BtcMarketDataPipeline implements SmartLifecycle
 
         try
         {
-            candleService.reconcile();
+            candleService.reconcileAll();
         }
         catch (RuntimeException exception)
         {

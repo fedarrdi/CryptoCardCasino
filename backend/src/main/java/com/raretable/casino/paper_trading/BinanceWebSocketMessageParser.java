@@ -1,6 +1,7 @@
 package com.raretable.casino.paper_trading;
 
 import java.math.BigDecimal;
+import java.util.Locale;
 
 import org.springframework.stereotype.Component;
 
@@ -23,18 +24,26 @@ final class BinanceWebSocketMessageParser
         try
         {
             JsonNode root = jsonMapper.readTree(message);
-            JsonNode kline = required(root, "k");
-            if (!"kline".equals(required(root, "e").stringValue()))
+            String stream = text(root, "stream");
+            JsonNode event = required(root, "data");
+            JsonNode kline = required(event, "k");
+            if (!"kline".equals(text(event, "e")))
             {
                 throw new IllegalArgumentException(
                     "Binance sent an unexpected stream event"
                 );
             }
 
-            String symbol = required(kline, "s").stringValue();
-            String interval = required(kline, "i").stringValue();
-            if (!BtcCandleService.SYMBOL.equals(symbol)
-                || !BtcCandleService.INTERVAL.equals(interval))
+            String eventSymbol = text(event, "s");
+            String symbol = text(kline, "s");
+            BtcCandleInterval interval =
+                BtcCandleInterval.parse(text(kline, "i"));
+            String expectedStream = symbol.toLowerCase(Locale.ROOT)
+                + "@kline_"
+                + interval.value();
+            if (!BtcCandleService.SYMBOL.equals(eventSymbol)
+                || !eventSymbol.equals(symbol)
+                || !expectedStream.equals(stream))
             {
                 throw new IllegalArgumentException(
                     "Binance sent an unexpected kline stream"
@@ -66,7 +75,7 @@ final class BinanceWebSocketMessageParser
 
             return new LiveBtcCandle(
                 symbol,
-                interval,
+                interval.value(),
                 openTimeMillis / 1_000,
                 decimal(kline, "o"),
                 decimal(kline, "h"),
@@ -107,5 +116,17 @@ final class BinanceWebSocketMessageParser
             );
         }
         return new BigDecimal(value.stringValue());
+    }
+
+    private static String text(JsonNode parent, String field)
+    {
+        JsonNode value = required(parent, field);
+        if (!value.isString())
+        {
+            throw new IllegalArgumentException(
+                "Binance kline field " + field + " is not a string"
+            );
+        }
+        return value.stringValue();
     }
 }

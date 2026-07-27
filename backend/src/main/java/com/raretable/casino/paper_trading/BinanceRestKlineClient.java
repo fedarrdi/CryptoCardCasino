@@ -14,8 +14,6 @@ final class BinanceRestKlineClient implements BinanceKlineSource
     static final int MAX_PAGE_SIZE = 1_000;
 
     private static final String SYMBOL = "BTCUSDT";
-    private static final String INTERVAL = "1h";
-
     private final RestClient restClient;
 
     BinanceRestKlineClient(RestClient restClient)
@@ -24,7 +22,11 @@ final class BinanceRestKlineClient implements BinanceKlineSource
     }
 
     @Override
-    public List<BinanceKline> getBtcOneHourKlines(Instant startTime, int limit)
+    public List<BinanceKline> getBtcKlines(
+        BtcCandleInterval interval,
+        Instant startTime,
+        int limit
+    )
     {
         if (limit <= 0 || limit > MAX_PAGE_SIZE)
         {
@@ -37,7 +39,7 @@ final class BinanceRestKlineClient implements BinanceKlineSource
             .uri(uriBuilder -> uriBuilder
                 .path("/api/v3/klines")
                 .queryParam("symbol", SYMBOL)
-                .queryParam("interval", INTERVAL)
+                .queryParam("interval", interval.value())
                 .queryParam("startTime", startTime.toEpochMilli())
                 .queryParam("limit", limit)
                 .build()

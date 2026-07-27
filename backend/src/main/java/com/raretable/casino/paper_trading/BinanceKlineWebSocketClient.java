@@ -76,7 +76,7 @@ final class BinanceKlineWebSocketClient
             scheduled.cancel(false);
         }
 
-        browserClients.clearLiveSnapshot();
+        browserClients.clearLiveSnapshots();
         WebSocket webSocket = connection.getAndSet(null);
         if (webSocket != null)
         {
@@ -104,7 +104,7 @@ final class BinanceKlineWebSocketClient
                 connecting.set(false);
                 if (failure != null)
                 {
-                    browserClients.clearLiveSnapshot();
+                    browserClients.clearLiveSnapshots();
                     LOGGER.warn(
                         "Could not connect to the Binance kline stream",
                         failure
@@ -153,7 +153,7 @@ final class BinanceKlineWebSocketClient
         webSocket.abort();
         if (activeConnection)
         {
-            browserClients.clearLiveSnapshot();
+            browserClients.clearLiveSnapshots();
             scheduleReconnect();
         }
     }
@@ -174,8 +174,10 @@ final class BinanceKlineWebSocketClient
 
             try
             {
-                candleService.reconcile();
-                LOGGER.info("Connected to the Binance BTCUSDT 1h kline stream");
+                candleService.reconcileAll();
+                LOGGER.info(
+                    "Connected to the Binance BTCUSDT combined kline stream"
+                );
                 webSocket.request(1);
             }
             catch (RuntimeException exception)
@@ -216,7 +218,7 @@ final class BinanceKlineWebSocketClient
                 connection.compareAndSet(webSocket, null);
             if (activeConnection)
             {
-                browserClients.clearLiveSnapshot();
+                browserClients.clearLiveSnapshots();
             }
             LOGGER.info(
                 "Binance kline stream closed with status {}",

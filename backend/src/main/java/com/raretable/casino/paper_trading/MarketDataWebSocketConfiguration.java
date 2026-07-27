@@ -13,7 +13,8 @@ import com.raretable.casino.auth.SiweProperties;
 @EnableWebSocket
 class MarketDataWebSocketConfiguration implements WebSocketConfigurer
 {
-    static final String ENDPOINT = "/ws/market-data/btcusdt/1h";
+    private static final String ENDPOINT_PREFIX =
+        "/ws/market-data/btcusdt/";
 
     private final MarketDataWebSocketHandler handler;
     private final SiweProperties siweProperties;
@@ -30,8 +31,36 @@ class MarketDataWebSocketConfiguration implements WebSocketConfigurer
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry)
     {
-        registry.addHandler(handler, ENDPOINT)
-            .setAllowedOrigins(origin(siweProperties.uri()));
+        String allowedOrigin = origin(siweProperties.uri());
+        for (BtcCandleInterval interval : BtcCandleInterval.values())
+        {
+            registry.addHandler(handler, endpoint(interval))
+                .setAllowedOrigins(allowedOrigin);
+        }
+    }
+
+    static String endpoint(BtcCandleInterval interval)
+    {
+        return ENDPOINT_PREFIX + interval.value();
+    }
+
+    static BtcCandleInterval interval(String path)
+    {
+        if (path == null || !path.startsWith(ENDPOINT_PREFIX))
+        {
+            throw new IllegalArgumentException(
+                "Unexpected market-data WebSocket path"
+            );
+        }
+
+        String value = path.substring(ENDPOINT_PREFIX.length());
+        if (value.isEmpty() || value.indexOf('/') >= 0)
+        {
+            throw new IllegalArgumentException(
+                "Unexpected market-data WebSocket path"
+            );
+        }
+        return BtcCandleInterval.parse(value);
     }
 
     private static String origin(URI uri)

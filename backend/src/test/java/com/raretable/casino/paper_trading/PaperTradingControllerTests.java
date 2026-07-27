@@ -100,7 +100,7 @@ class PaperTradingControllerTests
     {
         candleHistory.response = new BtcCandlesResponse(
             "BTCUSDT",
-            "1h",
+            "4h",
             List.of(
                 new BtcCandle(
                     1785139200,
@@ -124,12 +124,13 @@ class PaperTradingControllerTests
         );
 
         mockMvc.perform(get("/api/paper-trading/btc-candles")
+                .param("interval", "4h")
                 .param("before", "1785146400")
                 .param("limit", "1000")
                 .session(authenticatedSession()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.symbol").value("BTCUSDT"))
-            .andExpect(jsonPath("$.interval").value("1h"))
+            .andExpect(jsonPath("$.interval").value("4h"))
             .andExpect(jsonPath("$.hasMore").value(true))
             .andExpect(jsonPath("$.nextBefore").value(1785139200L))
             .andExpect(jsonPath("$.candles.length()").value(2))
@@ -141,8 +142,34 @@ class PaperTradingControllerTests
             .andExpect(jsonPath("$.candles[0].volume").value(123.45))
             .andExpect(jsonPath("$.candles[1].time").value(1785142800L));
 
+        assertEquals(BtcCandleInterval.FOUR_HOURS, candleHistory.interval);
         assertEquals(1785146400L, candleHistory.before);
         assertEquals(1000, candleHistory.limit);
+    }
+
+    @Test
+    void defaultsToOneHourAndRejectsUnsupportedIntervals() throws Exception
+    {
+        candleHistory.response = new BtcCandlesResponse(
+            "BTCUSDT",
+            "1h",
+            List.of(),
+            false,
+            null
+        );
+
+        mockMvc.perform(get("/api/paper-trading/btc-candles")
+                .session(authenticatedSession()))
+            .andExpect(status().isOk());
+        assertEquals(BtcCandleInterval.ONE_HOUR, candleHistory.interval);
+
+        int callsBeforeInvalidRequest = candleHistory.calls;
+        mockMvc.perform(get("/api/paper-trading/btc-candles")
+                .param("interval", "30m")
+                .session(authenticatedSession()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        assertEquals(callsBeforeInvalidRequest, candleHistory.calls);
     }
 
     @Test
@@ -237,17 +264,20 @@ class PaperTradingControllerTests
     static final class StubCandleHistory implements CandleHistoryQuery
     {
         private BtcCandlesResponse response;
+        private BtcCandleInterval interval;
         private Long before;
         private Integer limit;
         private int calls;
 
         @Override
         public BtcCandlesResponse getBtcCandles(
+            BtcCandleInterval requestedInterval,
             Long requestedBefore,
             Integer requestedLimit
         )
         {
             calls++;
+            interval = requestedInterval;
             before = requestedBefore;
             limit = requestedLimit;
             return response;

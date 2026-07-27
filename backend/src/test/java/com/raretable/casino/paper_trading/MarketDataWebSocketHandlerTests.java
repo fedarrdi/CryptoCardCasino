@@ -2,6 +2,7 @@ package com.raretable.casino.paper_trading;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -130,22 +131,44 @@ class MarketDataWebSocketHandlerTests
         handler.afterConnectionEstablished(existing);
         handler.broadcast(candle(1785139200L, "65300.40", false));
         assertTrue(existing.firstSendStarted.await(2, TimeUnit.SECONDS));
+        handler.broadcast(
+            candle("4h", 1785139200L, "65400.40", false)
+        );
 
-        handler.clearLiveSnapshot();
+        handler.clearLiveSnapshots();
         RecordingSession newClient = new RecordingSession(
             "new-client",
             false,
             1,
             false
         );
+        RecordingSession newFourHourClient = new RecordingSession(
+            "new-four-hour-client",
+            "4h",
+            false,
+            1,
+            false
+        );
         handler.afterConnectionEstablished(newClient);
+        handler.afterConnectionEstablished(newFourHourClient);
         assertEquals(0, newClient.sendAttempts.get());
+        assertEquals(0, newFourHourClient.sendAttempts.get());
 
         handler.broadcast(candle(1785142800L, "65320.40", false));
+        handler.broadcast(
+            candle("4h", 1785153600L, "65420.40", false)
+        );
         assertTrue(newClient.successfulSends.await(2, TimeUnit.SECONDS));
+        assertTrue(
+            newFourHourClient.successfulSends.await(2, TimeUnit.SECONDS)
+        );
         assertEquals(1, newClient.messages.size());
+        assertEquals(1, newFourHourClient.messages.size());
         assertTrue(newClient.messages.getFirst().contains(
             "\"time\":1785142800"
+        ));
+        assertTrue(newFourHourClient.messages.getFirst().contains(
+            "\"time\":1785153600"
         ));
     }
 
@@ -170,6 +193,108 @@ class MarketDataWebSocketHandlerTests
         assertEquals(1, session.sendAttempts.get());
     }
 
+    @Test
+    void routesUpdatesOnlyToClientsForTheSelectedInterval()
+        throws Exception
+    {
+        RecordingSession oneHour = new RecordingSession(
+            "one-hour-client",
+            "1h",
+            false,
+            1,
+            false
+        );
+        RecordingSession fourHours = new RecordingSession(
+            "four-hour-client",
+            "4h",
+            false,
+            1,
+            false
+        );
+        handler.afterConnectionEstablished(oneHour);
+        handler.afterConnectionEstablished(fourHours);
+
+        handler.broadcast(candle("1h", 1785139200L, "65300.40", false));
+
+        assertTrue(oneHour.successfulSends.await(2, TimeUnit.SECONDS));
+        assertEquals(1, oneHour.messages.size());
+        assertEquals(0, fourHours.sendAttempts.get());
+
+        handler.broadcast(candle("4h", 1785139200L, "65400.40", false));
+
+        assertTrue(fourHours.successfulSends.await(2, TimeUnit.SECONDS));
+        assertEquals(1, oneHour.messages.size());
+        assertEquals(1, fourHours.messages.size());
+        assertTrue(fourHours.messages.getFirst().contains(
+            "\"interval\":\"4h\""
+        ));
+    }
+
+    @Test
+    void sendsTheCachedSnapshotForEachClientsSelectedInterval()
+        throws Exception
+    {
+        handler.broadcast(candle("2h", 1785139200L, "65200.40", false));
+        handler.broadcast(candle("1d", 1785081600L, "66000.40", false));
+
+        RecordingSession twoHours = new RecordingSession(
+            "two-hour-client",
+            "2h",
+            false,
+            1,
+            false
+        );
+        RecordingSession oneDay = new RecordingSession(
+            "one-day-client",
+            "1d",
+            false,
+            1,
+            false
+        );
+        handler.afterConnectionEstablished(twoHours);
+        handler.afterConnectionEstablished(oneDay);
+
+        assertTrue(twoHours.successfulSends.await(2, TimeUnit.SECONDS));
+        assertTrue(oneDay.successfulSends.await(2, TimeUnit.SECONDS));
+        assertTrue(twoHours.messages.getFirst().contains(
+            "\"interval\":\"2h\""
+        ));
+        assertTrue(oneDay.messages.getFirst().contains(
+            "\"interval\":\"1d\""
+        ));
+    }
+
+    @Test
+    void exposesOnlyExactSupportedIntervalPaths()
+    {
+        for (BtcCandleInterval interval : BtcCandleInterval.values())
+        {
+            String endpoint =
+                "/ws/market-data/btcusdt/" + interval.value();
+            assertEquals(
+                endpoint,
+                MarketDataWebSocketConfiguration.endpoint(interval)
+            );
+            assertEquals(
+                interval,
+                MarketDataWebSocketConfiguration.interval(endpoint)
+            );
+        }
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> MarketDataWebSocketConfiguration.interval(
+                "/ws/market-data/btcusdt/1h/extra"
+            )
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> MarketDataWebSocketConfiguration.interval(
+                "/ws/market-data/btcusdt/30m"
+            )
+        );
+    }
+
     private static MarketDataWebSocketHandler handler(int sendTimeLimitMillis)
     {
         return new MarketDataWebSocketHandler(
@@ -184,9 +309,19 @@ class MarketDataWebSocketHandlerTests
         boolean closed
     )
     {
+        return candle("1h", time, close, closed);
+    }
+
+    private static LiveBtcCandle candle(
+        String interval,
+        long time,
+        String close,
+        boolean closed
+    )
+    {
         return new LiveBtcCandle(
             "BTCUSDT",
-            "1h",
+            interval,
             time,
             new BigDecimal("65000.10"),
             new BigDecimal("65500.20"),
@@ -200,6 +335,7 @@ class MarketDataWebSocketHandlerTests
     private static final class RecordingSession implements WebSocketSession
     {
         private final String id;
+        private final URI uri;
         private final boolean blockFirstSend;
         private final boolean failSends;
         private final List<String> messages = new CopyOnWriteArrayList<>();
@@ -220,7 +356,27 @@ class MarketDataWebSocketHandlerTests
             boolean failSends
         )
         {
+            this(
+                id,
+                "1h",
+                blockFirstSend,
+                expectedSuccessfulSends,
+                failSends
+            );
+        }
+
+        private RecordingSession(
+            String id,
+            String interval,
+            boolean blockFirstSend,
+            int expectedSuccessfulSends,
+            boolean failSends
+        )
+        {
             this.id = id;
+            uri = URI.create(
+                "ws://localhost/ws/market-data/btcusdt/" + interval
+            );
             this.blockFirstSend = blockFirstSend;
             this.failSends = failSends;
             this.releaseFirstSend = new CountDownLatch(blockFirstSend ? 1 : 0);
@@ -236,7 +392,7 @@ class MarketDataWebSocketHandlerTests
         @Override
         public URI getUri()
         {
-            return URI.create("ws://localhost/ws/market-data/btcusdt/1h");
+            return uri;
         }
 
         @Override

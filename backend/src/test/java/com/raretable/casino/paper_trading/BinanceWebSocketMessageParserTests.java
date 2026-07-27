@@ -2,6 +2,7 @@ package com.raretable.casino.paper_trading;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
@@ -18,7 +19,7 @@ class BinanceWebSocketMessageParserTests
     @Test
     void mapsCurrentKlineToEpochSeconds()
     {
-        LiveBtcCandle candle = parser.parse(message(false));
+        LiveBtcCandle candle = parser.parse(message("1h", false));
 
         assertEquals("BTCUSDT", candle.symbol());
         assertEquals("1h", candle.interval());
@@ -34,29 +35,77 @@ class BinanceWebSocketMessageParserTests
     @Test
     void mapsBinanceClosedFlag()
     {
-        assertTrue(parser.parse(message(true)).closed());
+        assertTrue(parser.parse(message("1h", true)).closed());
     }
 
-    private static String message(boolean closed)
+    @Test
+    void acceptsEveryConfiguredCombinedKlineStream()
+    {
+        for (BtcCandleInterval interval : BtcCandleInterval.values())
+        {
+            assertEquals(
+                interval.value(),
+                parser.parse(message(interval.value(), false)).interval()
+            );
+        }
+    }
+
+    @Test
+    void rejectsAnUnsupportedKlineInterval()
+    {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(message("30m", false))
+        );
+    }
+
+    @Test
+    void rejectsACombinedStreamNameThatDoesNotMatchItsPayload()
+    {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(
+                message("4h", false)
+                    .replace("btcusdt@kline_4h", "btcusdt@kline_1h")
+            )
+        );
+    }
+
+    @Test
+    void rejectsAnUnexpectedSymbol()
+    {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(
+                message("1h", false)
+                    .replace("\"s\": \"BTCUSDT\"", "\"s\": \"ETHUSDT\"")
+            )
+        );
+    }
+
+    private static String message(String interval, boolean closed)
     {
         return """
             {
-              "e": "kline",
-              "E": 1785140000000,
-              "s": "BTCUSDT",
-              "k": {
-                "t": 1785139200000,
-                "T": 1785142799999,
+              "stream": "btcusdt@kline_%s",
+              "data": {
+                "e": "kline",
+                "E": 1785140000000,
                 "s": "BTCUSDT",
-                "i": "1h",
-                "o": "65000.10000000",
-                "c": "65300.40000000",
-                "h": "65500.20000000",
-                "l": "64900.30000000",
-                "v": "123.45000000",
-                "x": %s
+                "k": {
+                  "t": 1785139200000,
+                  "T": 1785142799999,
+                  "s": "BTCUSDT",
+                  "i": "%s",
+                  "o": "65000.10000000",
+                  "c": "65300.40000000",
+                  "h": "65500.20000000",
+                  "l": "64900.30000000",
+                  "v": "123.45000000",
+                  "x": %s
+                }
               }
             }
-            """.formatted(closed);
+            """.formatted(interval, interval, closed);
     }
 }

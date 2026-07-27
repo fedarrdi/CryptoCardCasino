@@ -13,8 +13,10 @@ import {
 
 import {
   ApiError,
+  BTC_CANDLE_INTERVALS,
   getBtcCandles,
   getCurrentUser,
+  type BtcCandleInterval,
   type BtcCandleUpdate,
   type MarketCandle,
 } from './api.ts'
@@ -32,6 +34,22 @@ const STREAM_STALE_TIMEOUT_MS = 20_000
 const SESSION_REVALIDATION_MS = 5 * 60_000
 const OLDER_HISTORY_PAGE_SIZE = 1_000
 const OLDER_HISTORY_LOAD_THRESHOLD = 100
+
+const INTERVAL_DETAILS: Record<
+  BtcCandleInterval,
+  { label: string; description: string }
+> = {
+  '1h': { label: '1H', description: '1-hour' },
+  '2h': { label: '2H', description: '2-hour' },
+  '4h': { label: '4H', description: '4-hour' },
+  '6h': { label: '6H', description: '6-hour' },
+  '8h': { label: '8H', description: '8-hour' },
+  '12h': { label: '12H', description: '12-hour' },
+  '1d': { label: '1D', description: '1-day' },
+  '3d': { label: '3D', description: '3-day' },
+  '1w': { label: '1W', description: '1-week' },
+  '1M': { label: '1M', description: '1-month' },
+}
 
 const priceFormatter = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -53,8 +71,11 @@ function toChartCandle(candle: MarketCandle): CandlestickData<Time> {
   }
 }
 
-function marketSocketUrl(): string {
-  const url = new URL('/ws/market-data/btcusdt/1h', window.location.href)
+function marketSocketUrl(interval: BtcCandleInterval): string {
+  const url = new URL(
+    `/ws/market-data/btcusdt/${encodeURIComponent(interval)}`,
+    window.location.href,
+  )
   url.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.toString()
 }
@@ -122,6 +143,9 @@ function CandleValue({
 
 export function BtcChart({ onSessionExpired }: BtcChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [selectedInterval, setSelectedInterval] =
+    useState<BtcCandleInterval>('1h')
+  const activeIntervalRef = useRef<BtcCandleInterval>('1h')
   const [historyStatus, setHistoryStatus] =
     useState<HistoryStatus>('loading')
   const [streamStatus, setStreamStatus] =
@@ -243,6 +267,15 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
       const firstCandleTime = history.candles.at(0)?.time
 
       if (
+        history.symbol !== 'BTCUSDT' ||
+        history.interval !== selectedInterval
+      ) {
+        throw new Error(
+          `Expected BTCUSDT ${selectedInterval} candles but received ${history.symbol} ${history.interval}.`,
+        )
+      }
+
+      if (
         history.hasMore &&
         (firstCandleTime === undefined ||
           history.nextBefore !== firstCandleTime)
@@ -267,6 +300,7 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
     async function loadOlderHistory() {
       if (
         disposed ||
+        activeIntervalRef.current !== selectedInterval ||
         !olderHistoryLoadingArmed ||
         olderHistoryInFlight ||
         !hasMoreHistory
@@ -289,12 +323,17 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
 
       try {
         const history = await getBtcCandles({
+          interval: selectedInterval,
           before: requestedBefore,
           limit: OLDER_HISTORY_PAGE_SIZE,
           signal: controller.signal,
         })
 
-        if (disposed || controller.signal.aborted) {
+        if (
+          disposed ||
+          activeIntervalRef.current !== selectedInterval ||
+          controller.signal.aborted
+        ) {
           return
         }
 
@@ -347,7 +386,11 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
 
         applyHistoryPageMetadata(history)
       } catch (requestError) {
-        if (disposed || controller.signal.aborted) {
+        if (
+          disposed ||
+          activeIntervalRef.current !== selectedInterval ||
+          controller.signal.aborted
+        ) {
           return
         }
 
@@ -413,7 +456,10 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
     }
 
     function scheduleReconnect() {
-      if (disposed) {
+      if (
+        disposed ||
+        activeIntervalRef.current !== selectedInterval
+      ) {
         return
       }
 
@@ -427,7 +473,10 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
     }
 
     function synchronize(isReconnect: boolean) {
-      if (disposed) {
+      if (
+        disposed ||
+        activeIntervalRef.current !== selectedInterval
+      ) {
         return
       }
 
@@ -443,11 +492,15 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
       historyController = currentHistoryController
       setStreamStatus(isReconnect ? 'reconnecting' : 'connecting')
 
-      const currentSocket = new WebSocket(marketSocketUrl())
+      const currentSocket = new WebSocket(marketSocketUrl(selectedInterval))
       socket = currentSocket
 
       function isCurrentCycle(): boolean {
-        return !disposed && currentCycleId === cycleId
+        return (
+          !disposed &&
+          activeIntervalRef.current === selectedInterval &&
+          currentCycleId === cycleId
+        )
       }
 
       function resetStaleCountdown() {
@@ -511,6 +564,28 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
         resetStaleCountdown()
       }
 
+      function stopForUnexpectedMessage(message: string) {
+        if (!isCurrentCycle()) {
+          return
+        }
+
+        cycleId += 1
+        currentHistoryController.abort()
+        clearSocketTimers()
+        currentSocket.onopen = null
+        currentSocket.onmessage = null
+        currentSocket.onerror = null
+        currentSocket.onclose = null
+
+        if (socket === currentSocket) {
+          socket = null
+        }
+
+        setError(message)
+        setHistoryStatus('error')
+        currentSocket.close(1008, 'Unexpected candle message')
+      }
+
       currentSocket.onopen = () => {
         if (socketConnectTimer !== null) {
           window.clearTimeout(socketConnectTimer)
@@ -527,7 +602,26 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
           return
         }
 
-        const candle = JSON.parse(event.data as string) as BtcCandleUpdate
+        let candle: BtcCandleUpdate
+
+        try {
+          candle = JSON.parse(event.data as string) as BtcCandleUpdate
+        } catch {
+          stopForUnexpectedMessage(
+            `The ${selectedInterval} market stream returned invalid JSON.`,
+          )
+          return
+        }
+
+        if (
+          candle.symbol !== 'BTCUSDT' ||
+          candle.interval !== selectedInterval
+        ) {
+          stopForUnexpectedMessage(
+            `Expected BTCUSDT ${selectedInterval} live candles but received ${candle.symbol} ${candle.interval}.`,
+          )
+          return
+        }
 
         if (!historyApplied) {
           bufferLiveCandle(candle)
@@ -574,6 +668,7 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
       async function reconcileHistory() {
         try {
           const history = await getBtcCandles({
+            interval: selectedInterval,
             signal: currentHistoryController.signal,
           })
 
@@ -743,10 +838,26 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
 
       chart.remove()
     }
-  }, [onSessionExpired, reloadKey])
+  }, [onSessionExpired, reloadKey, selectedInterval])
 
   const displayedStatus = statusLabel(historyStatus, streamStatus)
   const isLive = historyStatus === 'ready' && streamStatus === 'live'
+  const intervalDetails = INTERVAL_DETAILS[selectedInterval]
+
+  function selectInterval(interval: BtcCandleInterval) {
+    if (interval === selectedInterval) {
+      return
+    }
+
+    activeIntervalRef.current = interval
+    setHistoryStatus('loading')
+    setStreamStatus('connecting')
+    setLatestCandle(null)
+    setError(null)
+    setOlderHistoryStatus('idle')
+    setOlderHistoryError(null)
+    setSelectedInterval(interval)
+  }
 
   return (
     <section className="chart-card">
@@ -755,7 +866,26 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
           <span className="panel-label">BTC / USDT · Spot market</span>
           <div className="chart-title-row">
             <h2>Bitcoin price</h2>
-            <span className="timeframe-chip">1H</span>
+            <span className="timeframe-chip">{intervalDetails.label}</span>
+          </div>
+          <div
+            className="timeframe-selector"
+            role="group"
+            aria-label="BTC candle timeframe"
+          >
+            {BTC_CANDLE_INTERVALS.map((interval) => (
+              <button
+                className={
+                  interval === selectedInterval ? 'is-selected' : undefined
+                }
+                type="button"
+                key={interval}
+                aria-pressed={interval === selectedInterval}
+                onClick={() => selectInterval(interval)}
+              >
+                {INTERVAL_DETAILS[interval].label}
+              </button>
+            ))}
           </div>
         </div>
         <span
@@ -815,7 +945,7 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
           className="chart-canvas"
           ref={containerRef}
           role="img"
-          aria-label="Interactive one-hour BTC USDT candlestick chart"
+          aria-label={`Interactive ${intervalDetails.description} BTC USDT candlestick chart`}
         />
 
         {historyStatus === 'ready' &&
@@ -853,7 +983,7 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
             <small>
               {streamStatus === 'reconnecting'
                 ? 'The market-data service is temporarily unavailable.'
-                : 'Preparing the 1-hour BTC / USDT market view…'}
+                : `Preparing the ${intervalDetails.description} BTC / USDT market view…`}
             </small>
           </div>
         )}
@@ -862,7 +992,9 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
           <div className="chart-overlay" role="status">
             <span className="empty-chart-icon">╱╲</span>
             <strong>No candle history yet</strong>
-            <small>Waiting for the first live one-hour candle.</small>
+            <small>
+              Waiting for the first live {intervalDetails.description} candle.
+            </small>
           </div>
         )}
 
@@ -879,7 +1011,7 @@ export function BtcChart({ onSessionExpired }: BtcChartProps) {
       </div>
 
       <div className="chart-footer">
-        <span>Binance 1-hour trade-price candles</span>
+        <span>Binance {intervalDetails.description} trade-price candles</span>
         <span>Scroll to zoom · drag left to load history</span>
       </div>
     </section>
@@ -894,7 +1026,7 @@ export function LockedBtcChart() {
           <span className="panel-label">BTC / USDT · Spot market</span>
           <div className="chart-title-row">
             <h2>Bitcoin price</h2>
-            <span className="timeframe-chip">1H</span>
+            <span className="timeframe-chip">1H+</span>
           </div>
         </div>
         <span className="chart-status">
@@ -907,8 +1039,8 @@ export function LockedBtcChart() {
         <span className="chart-lock-icon" aria-hidden="true">◇</span>
         <strong>Connect your wallet to open the chart</strong>
         <p>
-          Historical one-hour candles and the live BTC market stream are
-          available inside an authenticated session.
+          Historical hourly-and-higher candles and the live BTC market stream
+          are available inside an authenticated session.
         </p>
       </div>
     </section>

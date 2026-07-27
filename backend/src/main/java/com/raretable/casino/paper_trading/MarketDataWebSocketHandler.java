@@ -1,7 +1,9 @@
 package com.raretable.casino.paper_trading;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayDeque;
+import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -43,8 +45,8 @@ final class MarketDataWebSocketHandler
     private final Map<String, ClientSession> sessions =
         new java.util.concurrent.ConcurrentHashMap<>();
     private final AtomicLong messageSequence = new AtomicLong();
-    private final AtomicReference<PendingCandle> latestMessage =
-        new AtomicReference<>();
+    private final Map<BtcCandleInterval, AtomicReference<PendingCandle>>
+        latestMessages = latestMessages();
     private final ExecutorService fanoutExecutor =
         Executors.newVirtualThreadPerTaskExecutor();
     private final ScheduledExecutorService sendWatchdog =
@@ -79,16 +81,20 @@ final class MarketDataWebSocketHandler
     @Override
     public void afterConnectionEstablished(WebSocketSession session)
     {
+        BtcCandleInterval interval = interval(session);
         ConcurrentWebSocketSessionDecorator concurrentSession =
             new ConcurrentWebSocketSessionDecorator(
                 session,
                 sendTimeLimitMillis,
                 BUFFER_SIZE_LIMIT_BYTES
             );
-        ClientSession client = new ClientSession(concurrentSession);
+        ClientSession client = new ClientSession(
+            concurrentSession,
+            interval
+        );
         sessions.put(session.getId(), client);
 
-        PendingCandle current = latestMessage.get();
+        PendingCandle current = latestMessage(interval).get();
         if (current != null)
         {
             enqueue(client, current);
@@ -120,18 +126,22 @@ final class MarketDataWebSocketHandler
 
     void broadcast(LiveBtcCandle candle)
     {
+        BtcCandleInterval interval =
+            BtcCandleInterval.parse(candle.interval());
         PendingCandle message = new PendingCandle(
             candle.time(),
             messageSequence.incrementAndGet(),
             new TextMessage(serialize(candle))
         );
-        latestMessage.set(message);
-        sessions.values().forEach(client -> enqueue(client, message));
+        latestMessage(interval).set(message);
+        sessions.values().stream()
+            .filter(client -> client.interval == interval)
+            .forEach(client -> enqueue(client, message));
     }
 
-    void clearLiveSnapshot()
+    void clearLiveSnapshots()
     {
-        latestMessage.set(null);
+        latestMessages.values().forEach(snapshot -> snapshot.set(null));
     }
 
     @Override
@@ -144,7 +154,40 @@ final class MarketDataWebSocketHandler
             close(client.session);
         });
         sessions.clear();
-        latestMessage.set(null);
+        clearLiveSnapshots();
+    }
+
+    private AtomicReference<PendingCandle> latestMessage(
+        BtcCandleInterval interval
+    )
+    {
+        return latestMessages.get(interval);
+    }
+
+    private static Map<
+        BtcCandleInterval,
+        AtomicReference<PendingCandle>
+    > latestMessages()
+    {
+        Map<BtcCandleInterval, AtomicReference<PendingCandle>> messages =
+            new EnumMap<>(BtcCandleInterval.class);
+        for (BtcCandleInterval interval : BtcCandleInterval.values())
+        {
+            messages.put(interval, new AtomicReference<>());
+        }
+        return messages;
+    }
+
+    private static BtcCandleInterval interval(WebSocketSession session)
+    {
+        URI uri = session.getUri();
+        if (uri == null)
+        {
+            throw new IllegalArgumentException(
+                "Market-data WebSocket session URI is required"
+            );
+        }
+        return MarketDataWebSocketConfiguration.interval(uri.getPath());
     }
 
     private void enqueue(ClientSession client, PendingCandle message)
@@ -454,6 +497,7 @@ final class MarketDataWebSocketHandler
     private static final class ClientSession
     {
         private final ConcurrentWebSocketSessionDecorator session;
+        private final BtcCandleInterval interval;
         private final ArrayDeque<PendingCandle> pending = new ArrayDeque<>(
             MAX_PENDING_TIMESTAMPS
         );
@@ -468,10 +512,12 @@ final class MarketDataWebSocketHandler
         private long lastDeliveredSequence = Long.MIN_VALUE;
 
         private ClientSession(
-            ConcurrentWebSocketSessionDecorator session
+            ConcurrentWebSocketSessionDecorator session,
+            BtcCandleInterval interval
         )
         {
             this.session = session;
+            this.interval = interval;
         }
     }
 }

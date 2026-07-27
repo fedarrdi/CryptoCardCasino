@@ -450,6 +450,10 @@ main {
   border-bottom: 1px solid #242924;
 }
 
+.chart-heading > div {
+  min-width: 0;
+}
+
 .chart-title-row {
   margin-top: 8px;
   display: flex;
@@ -474,8 +478,46 @@ main {
   font-weight: 500;
 }
 
+.timeframe-selector {
+  margin-top: 15px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.timeframe-selector button {
+  min-width: 36px;
+  height: 29px;
+  padding: 0 8px;
+  border: 1px solid #2e342e;
+  border-radius: 6px;
+  color: #777f75;
+  background: #151915;
+  cursor: pointer;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.timeframe-selector button:hover {
+  border-color: #50594d;
+  color: #c4cbc0;
+}
+
+.timeframe-selector button.is-selected {
+  border-color: rgba(192, 242, 93, 0.4);
+  color: #c0f25d;
+  background: rgba(192, 242, 93, 0.1);
+}
+
 .chart-status {
   margin-top: 5px;
+  flex: 0 0 auto;
   padding: 8px 11px;
   display: flex;
   align-items: center;
@@ -821,6 +863,23 @@ footer {
 
   .chart-heading {
     min-height: 98px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .chart-status {
+    align-self: flex-start;
+  }
+
+  .timeframe-selector {
+    padding-bottom: 3px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .timeframe-selector button {
+    flex: 0 0 auto;
   }
 
   .chart-stage {

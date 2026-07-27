@@ -24,9 +24,24 @@ export type MarketCandle = {
   volume: number
 }
 
+export const BTC_CANDLE_INTERVALS = [
+  '1h',
+  '2h',
+  '4h',
+  '6h',
+  '8h',
+  '12h',
+  '1d',
+  '3d',
+  '1w',
+  '1M',
+] as const
+
+export type BtcCandleInterval = (typeof BTC_CANDLE_INTERVALS)[number]
+
 export type BtcCandleHistory = {
   symbol: 'BTCUSDT'
-  interval: '1h'
+  interval: BtcCandleInterval
   candles: MarketCandle[]
   hasMore: boolean
   nextBefore: number | null
@@ -34,7 +49,7 @@ export type BtcCandleHistory = {
 
 export type BtcCandleUpdate = MarketCandle & {
   symbol: 'BTCUSDT'
-  interval: '1h'
+  interval: BtcCandleInterval
   closed: boolean
 }
 
@@ -110,17 +125,23 @@ export function getBtcPrice(): Promise<BtcPrice> {
 }
 
 export type BtcCandleHistoryRequest = {
+  interval?: BtcCandleInterval
   before?: number
   limit?: number
   signal?: AbortSignal
 }
 
 export function getBtcCandles({
+  interval,
   before,
   limit,
   signal,
 }: BtcCandleHistoryRequest = {}): Promise<BtcCandleHistory> {
   const search = new URLSearchParams()
+
+  if (interval !== undefined) {
+    search.set('interval', interval)
+  }
 
   if (before !== undefined) {
     search.set('before', String(before))

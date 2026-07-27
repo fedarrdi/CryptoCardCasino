@@ -5,7 +5,8 @@ includes:
 
 - MetaMask wallet login with session restoration
 - An on-demand BTC/USDT midpoint
-- A responsive 1-hour candlestick chart built with TradingView Lightweight
+- A responsive BTC/USDT candlestick chart with selectable 1h, 2h, 4h, 6h,
+  8h, 12h, 1d, 3d, 1w, and 1M timeframes, built with TradingView Lightweight
   Charts 5.2
 - Paginated historical candle loading followed by live WebSocket updates
 
@@ -43,10 +44,11 @@ backend at `http://localhost:8080`.
 The frontend loads the initial chart with:
 
 ```text
-GET /api/paper-trading/btc-candles
+GET /api/paper-trading/btc-candles?interval=1h
 ```
 
-The authenticated response contains ordered 1-hour BTC/USDT candles:
+The authenticated response contains ordered BTC/USDT candles for the requested
+timeframe:
 
 ```json
 {
@@ -72,7 +74,7 @@ within 100 candles of the chart's left edge, the frontend requests the next
 older page:
 
 ```text
-GET /api/paper-trading/btc-candles?before=1785106800&limit=1000
+GET /api/paper-trading/btc-candles?interval=1h&before=1785106800&limit=1000
 ```
 
 `before` is an exclusive epoch-seconds cursor. When `hasMore` is true,
@@ -82,7 +84,12 @@ user's current viewport. Only one historical request can be active at a time,
 and loading stops when `hasMore` is false. Already-loaded history remains in
 the chart through live updates and WebSocket reconciliation.
 
-After history is loaded, the chart connects to:
+Changing the timeframe cancels both active history requests, closes the prior
+WebSocket, clears its candles, and creates a new interval-scoped chart session.
+Responses and socket messages from an old interval cannot update the newly
+selected chart.
+
+After history is loaded, the chart connects to the matching interval stream:
 
 ```text
 /ws/market-data/btcusdt/1h

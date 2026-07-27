@@ -5,5 +5,9 @@ import java.util.List;
 
 interface BinanceKlineSource
 {
-    List<BinanceKline> getBtcOneHourKlines(Instant startTime, int limit);
+    List<BinanceKline> getBtcKlines(
+        BtcCandleInterval interval,
+        Instant startTime,
+        int limit
+    );
 }

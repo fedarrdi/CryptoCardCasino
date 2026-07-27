@@ -6,7 +6,8 @@ interface lives in `paper-trading-frontend/`.
 ## Paper trading frontend
 
 The paper-trading interface supports MetaMask login, authenticated BTC/USDT
-mid-price requests, and a live one-hour candlestick chart.
+mid-price requests, and a live candlestick chart with every supported Binance
+Spot timeframe from one hour through one month.
 
 ```bash
 cd paper-trading-frontend
@@ -56,14 +57,16 @@ Flyway applies the database migrations automatically when the backend starts.
 The development profile connects to PostgreSQL at `localhost:5433` and Redis
 at `localhost:6379` using the settings declared in `compose.yaml`.
 
-On its first start, the backend downloads Binance's closed BTCUSDT one-hour
-candles into PostgreSQL. Later starts resume after the latest stored candle.
-One Binance WebSocket connection supplies the current candle to all connected
-browser clients, while a periodic reconciliation repairs data missed during a
-disconnect. The history API returns the latest 2,000 stored candles; the full
-history remains durable in PostgreSQL. As a user drags the chart left, the
-frontend requests older 1,000-candle pages from PostgreSQL with an exclusive
-timestamp cursor and stops after reaching Binance's first candle.
+On its first start, the backend downloads Binance's closed BTCUSDT candles for
+`1h`, `2h`, `4h`, `6h`, `8h`, `12h`, `1d`, `3d`, `1w`, and `1M` into
+PostgreSQL. Later starts resume each timeframe after its latest stored candle.
+One combined Binance WebSocket connection supplies current candles to all
+connected browser clients, while periodic reconciliation repairs data missed
+during a disconnect. The history API returns the latest 2,000 stored candles
+for the selected timeframe; the full history remains durable in PostgreSQL. As
+a user drags the chart left, the frontend requests older 1,000-candle pages
+from PostgreSQL with an exclusive timestamp cursor and stops after reaching
+Binance's first candle.
 
 The market-data pipeline currently assumes one backend instance. When the API
 is scaled to multiple instances, run ingestion on one elected worker, disable

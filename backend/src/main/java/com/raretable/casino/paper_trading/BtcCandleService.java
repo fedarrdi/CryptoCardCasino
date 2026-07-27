@@ -2,11 +2,11 @@ package com.raretable.casino.paper_trading;
 
 import java.time.Clock;
 import java.time.DateTimeException;
-import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -16,15 +16,13 @@ import org.springframework.stereotype.Service;
 final class BtcCandleService implements CandleHistoryQuery
 {
     static final String SYMBOL = "BTCUSDT";
-    static final String INTERVAL = "1h";
-    static final Duration INTERVAL_DURATION = Duration.ofHours(1);
+    static final String INTERVAL = BtcCandleInterval.ONE_HOUR.value();
 
     private final MarketCandleRepository repository;
     private final BinanceKlineSource binance;
     private final MarketDataProperties properties;
     private final Clock clock;
-    private final AtomicBoolean initialSyncComplete = new AtomicBoolean();
-    private BtcCandlesResponse historyCache;
+    private final Map<BtcCandleInterval, IntervalState> intervalStates;
 
     BtcCandleService(
         MarketCandleRepository repository,
@@ -37,46 +35,68 @@ final class BtcCandleService implements CandleHistoryQuery
         this.binance = binance;
         this.properties = properties;
         this.clock = clock;
+
+        intervalStates = new EnumMap<>(BtcCandleInterval.class);
+        for (BtcCandleInterval interval : BtcCandleInterval.values())
+        {
+            intervalStates.put(interval, new IntervalState());
+        }
     }
 
     @Override
     public BtcCandlesResponse getBtcCandles(
+        BtcCandleInterval interval,
         Long before,
         Integer requestedLimit
     )
     {
         int limit = resolveLimit(requestedLimit);
         Instant beforeInstant = resolveBefore(before);
+        IntervalState state = state(interval);
 
-        if (!initialSyncComplete.get())
+        if (!state.initialSyncComplete.get())
         {
             throw new MarketDataSynchronizingException();
         }
 
         if (beforeInstant == null && limit == properties.historyLimit())
         {
-            return getCachedLatestPage(limit);
+            return getCachedLatestPage(interval, state, limit);
         }
-        return loadPage(beforeInstant, limit);
+        return loadPage(interval, beforeInstant, limit);
     }
 
-    private synchronized BtcCandlesResponse getCachedLatestPage(int limit)
+    private BtcCandlesResponse getCachedLatestPage(
+        BtcCandleInterval interval,
+        IntervalState state,
+        int limit
+    )
     {
-        if (historyCache == null)
+        synchronized (state.reconciliationLock)
         {
-            historyCache = loadPage(null, limit);
+            synchronized (state.cacheLock)
+            {
+                if (state.historyCache == null)
+                {
+                    state.historyCache = loadPage(interval, null, limit);
+                }
+                return state.historyCache;
+            }
         }
-        return historyCache;
     }
 
-    private BtcCandlesResponse loadPage(Instant before, int limit)
+    private BtcCandlesResponse loadPage(
+        BtcCandleInterval interval,
+        Instant before,
+        int limit
+    )
     {
         int queryLimit = limit + 1;
         List<StoredCandle> storedCandles = before == null
-            ? repository.findLatest(SYMBOL, INTERVAL, queryLimit)
+            ? repository.findLatest(SYMBOL, interval.value(), queryLimit)
             : repository.findBefore(
                 SYMBOL,
-                INTERVAL,
+                interval.value(),
                 before,
                 queryLimit
             );
@@ -90,23 +110,52 @@ final class BtcCandleService implements CandleHistoryQuery
         Long nextBefore = hasMore ? candles.getFirst().time() : null;
         return new BtcCandlesResponse(
             SYMBOL,
-            INTERVAL,
+            interval.value(),
             candles,
             hasMore,
             nextBefore
         );
     }
 
-    synchronized void reconcile()
+    void reconcileAll()
+    {
+        for (BtcCandleInterval interval : BtcCandleInterval.values())
+        {
+            reconcile(interval);
+        }
+    }
+
+    void reconcile()
+    {
+        reconcile(BtcCandleInterval.ONE_HOUR);
+    }
+
+    void reconcile(BtcCandleInterval interval)
+    {
+        IntervalState state = state(interval);
+        synchronized (state.reconciliationLock)
+        {
+            reconcileLocked(interval, state);
+        }
+    }
+
+    private void reconcileLocked(
+        BtcCandleInterval interval,
+        IntervalState state
+    )
     {
         Instant now = clock.instant();
-        Instant firstOpenCandle = now.truncatedTo(ChronoUnit.HOURS);
-        Instant cursor = repository.findLatestOpenTime(SYMBOL, INTERVAL)
-            .orElse(properties.initialOpenTime());
+        Instant cursor = repository.findLatestOpenTime(
+            SYMBOL,
+            interval.value()
+        ).orElseGet(() ->
+            properties.initialOpenTime().minus(interval.maximumSpan())
+        );
 
-        while (cursor.isBefore(firstOpenCandle))
+        while (true)
         {
-            List<BinanceKline> page = binance.getBtcOneHourKlines(
+            List<BinanceKline> page = binance.getBtcKlines(
+                interval,
                 cursor,
                 BinanceRestKlineClient.MAX_PAGE_SIZE
             );
@@ -114,7 +163,8 @@ final class BtcCandleService implements CandleHistoryQuery
             if (page.isEmpty())
             {
                 throw new IllegalStateException(
-                    "Binance returned no klines before the current hour"
+                    "Binance returned no " + interval.value()
+                        + " klines before the current candle"
                 );
             }
 
@@ -125,69 +175,94 @@ final class BtcCandleService implements CandleHistoryQuery
             {
                 if (kline.closeTime().isBefore(now))
                 {
-                    closedCandles.add(toStored(kline));
+                    closedCandles.add(toStored(interval, kline));
                 }
             }
-            repository.upsertAll(closedCandles);
-            if (!closedCandles.isEmpty())
+            storeBatch(state, closedCandles);
+
+            BinanceKline lastKline = page.getLast();
+            if (!lastKline.closeTime().isBefore(now))
             {
-                historyCache = null;
+                state.initialSyncComplete.set(true);
+                return;
             }
 
-            Instant nextCursor = page.getLast()
-                .openTime()
-                .plus(INTERVAL_DURATION);
+            Instant nextCursor = lastKline.closeTime().plusMillis(1);
             if (!nextCursor.isAfter(cursor))
             {
                 throw new IllegalStateException(
-                    "Binance kline cursor did not advance"
+                    "Binance " + interval.value()
+                        + " kline cursor did not advance"
                 );
             }
             cursor = nextCursor;
 
-            if (page.size() < BinanceRestKlineClient.MAX_PAGE_SIZE
-                && cursor.isBefore(firstOpenCandle))
+            if (page.size() < BinanceRestKlineClient.MAX_PAGE_SIZE)
             {
                 throw new IllegalStateException(
-                    "Binance kline history ended before the current hour"
+                    "Binance " + interval.value()
+                        + " kline history ended before the current candle"
                 );
             }
         }
-
-        initialSyncComplete.set(true);
     }
 
-    synchronized void storeClosed(LiveBtcCandle candle)
+    void storeClosed(LiveBtcCandle candle)
     {
         if (!candle.closed())
         {
             throw new IllegalArgumentException("Only closed candles are persistent");
         }
-        if (!SYMBOL.equals(candle.symbol()) || !INTERVAL.equals(candle.interval()))
+        if (!SYMBOL.equals(candle.symbol()))
         {
             throw new IllegalArgumentException("Unexpected market candle");
         }
 
-        Instant openTime = Instant.ofEpochSecond(candle.time());
-        Optional<Instant> latest = repository.findLatestOpenTime(SYMBOL, INTERVAL);
-
-        if (latest.isEmpty()
-            || openTime.isAfter(latest.get().plus(INTERVAL_DURATION)))
+        BtcCandleInterval interval = BtcCandleInterval.parse(candle.interval());
+        IntervalState state = state(interval);
+        synchronized (state.reconciliationLock)
         {
-            reconcile();
-        }
+            Instant openTime = Instant.ofEpochSecond(candle.time());
+            Optional<Instant> latest = repository.findLatestOpenTime(
+                SYMBOL,
+                interval.value()
+            );
 
-        repository.upsertAll(List.of(new StoredCandle(
-            candle.symbol(),
-            candle.interval(),
-            openTime,
-            candle.open(),
-            candle.high(),
-            candle.low(),
-            candle.close(),
-            candle.volume()
-        )));
-        historyCache = null;
+            if (latest.isEmpty()
+                || openTime.isAfter(
+                    interval.nextOpenTime(latest.orElseThrow())
+                ))
+            {
+                reconcileLocked(interval, state);
+            }
+
+            storeBatch(state, List.of(new StoredCandle(
+                candle.symbol(),
+                interval.value(),
+                openTime,
+                candle.open(),
+                candle.high(),
+                candle.low(),
+                candle.close(),
+                candle.volume()
+            )));
+        }
+    }
+
+    private void storeBatch(
+        IntervalState state,
+        List<StoredCandle> candles
+    )
+    {
+        if (candles.isEmpty())
+        {
+            return;
+        }
+        synchronized (state.cacheLock)
+        {
+            repository.upsertAll(candles);
+            state.historyCache = null;
+        }
     }
 
     private static void validateAscendingPage(
@@ -209,11 +284,14 @@ final class BtcCandleService implements CandleHistoryQuery
         }
     }
 
-    private static StoredCandle toStored(BinanceKline kline)
+    private static StoredCandle toStored(
+        BtcCandleInterval interval,
+        BinanceKline kline
+    )
     {
         return new StoredCandle(
             SYMBOL,
-            INTERVAL,
+            interval.value(),
             kline.openTime(),
             kline.open(),
             kline.high(),
@@ -262,5 +340,24 @@ final class BtcCandleService implements CandleHistoryQuery
                 exception
             );
         }
+    }
+
+    private IntervalState state(BtcCandleInterval interval)
+    {
+        if (interval == null)
+        {
+            throw new IllegalArgumentException(
+                "BTC candle interval is required"
+            );
+        }
+        return intervalStates.get(interval);
+    }
+
+    private static final class IntervalState
+    {
+        private final Object reconciliationLock = new Object();
+        private final Object cacheLock = new Object();
+        private final AtomicBoolean initialSyncComplete = new AtomicBoolean();
+        private BtcCandlesResponse historyCache;
     }
 }
