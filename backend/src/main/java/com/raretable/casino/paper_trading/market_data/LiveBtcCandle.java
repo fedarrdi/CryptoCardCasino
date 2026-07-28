@@ -6,6 +6,7 @@ import com.raretable.casino.paper_trading.api.BtcCandle;
 
 public record LiveBtcCandle(
     String symbol,
+    String productType,
     String interval,
     long time,
     BigDecimal open,

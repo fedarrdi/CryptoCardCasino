@@ -23,6 +23,8 @@ import {
   type BtcCandleUpdate,
   type MarketCandle,
   type OpenPaperPosition,
+  type PaperTradingAccount,
+  type PaperTradingQuote,
   type PositionSide,
 } from './api.ts'
 
@@ -33,11 +35,19 @@ type OlderHistoryStatus = 'idle' | 'loading' | 'exhausted' | 'error'
 type BtcChartProps = {
   onSessionExpired: () => void
   openPositions: readonly OpenPaperPosition[]
+  account: PaperTradingAccount | null
+  quote: PaperTradingQuote | null
 }
 
-type PositionEntryLine = {
+type ManagedPriceLine = {
   line: IPriceLine
   fingerprint: string
+}
+
+type PriceLineSpec = {
+  key: string
+  fingerprint: string
+  options: CreatePriceLineOptions
 }
 
 const SOCKET_CONNECT_TIMEOUT_MS = 10_000
@@ -86,65 +96,173 @@ function toChartCandle(candle: MarketCandle): CandlestickData<Time> {
   }
 }
 
-function positionEntryLineOptions(
+function positionPriceLineSpecs(
   position: OpenPaperPosition,
-): CreatePriceLineOptions {
+): PriceLineSpec[] {
   const color = POSITION_ENTRY_COLORS[position.side]
+  const specs: PriceLineSpec[] = [
+    {
+      key: `${position.id}:entry`,
+      fingerprint: [
+        position.side,
+        position.entryPrice,
+        position.leverage,
+      ].join(':'),
+      options: {
+        id: `${position.id}:entry`,
+        price: position.entryPrice,
+        color,
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+        lineVisible: true,
+        axisLabelVisible: true,
+        axisLabelColor: color,
+        axisLabelTextColor: '#101310',
+        title: `${position.side} ENTRY · ${position.leverage}×`,
+      },
+    },
+    {
+      key: `${position.id}:break-even`,
+      fingerprint: `${position.side}:${position.breakEvenPrice}`,
+      options: {
+        id: `${position.id}:break-even`,
+        price: position.breakEvenPrice,
+        color: '#83bfff',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dotted,
+        lineVisible: true,
+        axisLabelVisible: true,
+        axisLabelColor: '#315275',
+        axisLabelTextColor: '#e5f1ff',
+        title: `${position.side} BREAK-EVEN`,
+      },
+    },
+  ]
 
-  return {
-    id: position.id,
-    price: position.entryPrice,
-    color,
-    lineWidth: 2,
-    lineStyle: LineStyle.Solid,
-    lineVisible: true,
-    axisLabelVisible: true,
-    axisLabelColor: color,
-    axisLabelTextColor: '#101310',
-    title: `${position.side} ENTRY · ${position.leverage}×`,
-  }
+  return specs
 }
 
-function synchronizePositionEntryLines(
-  candleSeries: ISeriesApi<'Candlestick'>,
-  entryLines: Map<string, PositionEntryLine>,
-  openPositions: readonly OpenPaperPosition[],
-) {
-  const openPositionIds = new Set(
-    openPositions.map((position) => position.id),
-  )
+function marketPriceLineSpecs(
+  quote: PaperTradingQuote | null,
+): PriceLineSpec[] {
+  if (quote === null) {
+    return []
+  }
 
-  for (const [positionId, entryLine] of entryLines) {
-    if (!openPositionIds.has(positionId)) {
-      candleSeries.removePriceLine(entryLine.line)
-      entryLines.delete(positionId)
+  return [
+    {
+      key: 'market:mark',
+      fingerprint: `${quote.markPrice}:${quote.markPriceUpdatedAt}`,
+      options: {
+        id: 'market:mark',
+        price: quote.markPrice,
+        color: '#f0b90b',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        lineVisible: true,
+        axisLabelVisible: true,
+        axisLabelColor: '#6f5909',
+        axisLabelTextColor: '#fff2b5',
+        title: 'MARK',
+      },
+    },
+    {
+      key: 'market:index',
+      fingerprint: `${quote.indexPrice}:${quote.markPriceUpdatedAt}`,
+      options: {
+        id: 'market:index',
+        price: quote.indexPrice,
+        color: '#8293a8',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dotted,
+        lineVisible: true,
+        axisLabelVisible: true,
+        axisLabelColor: '#394653',
+        axisLabelTextColor: '#e8eef5',
+        title: 'INDEX',
+      },
+    },
+  ]
+}
+
+function accountRiskLineSpecs(
+  account: PaperTradingAccount | null,
+): PriceLineSpec[] {
+  if (account === null) {
+    return []
+  }
+
+  return [
+    {
+      boundary: 'lower',
+      price: account.estimatedLowerLiquidationPrice,
+      title: 'CROSS LIQUIDATION · LOWER',
+    },
+    {
+      boundary: 'upper',
+      price: account.estimatedUpperLiquidationPrice,
+      title: 'CROSS LIQUIDATION · UPPER',
+    },
+  ].flatMap(({ boundary, price, title }) =>
+    price === null
+      ? []
+      : [{
+          key: `account:liquidation:${boundary}`,
+          fingerprint: String(price),
+          options: {
+            id: `account:liquidation:${boundary}`,
+            price,
+            color: '#ff4d6d',
+            lineWidth: 2,
+            lineStyle: LineStyle.Dashed,
+            lineVisible: true,
+            axisLabelVisible: true,
+            axisLabelColor: '#ff4d6d',
+            axisLabelTextColor: '#17090c',
+            title,
+          },
+        }],
+  )
+}
+
+function synchronizePriceLines(
+  candleSeries: ISeriesApi<'Candlestick'>,
+  managedLines: Map<string, ManagedPriceLine>,
+  openPositions: readonly OpenPaperPosition[],
+  account: PaperTradingAccount | null,
+  quote: PaperTradingQuote | null,
+) {
+  const specs = [
+    ...marketPriceLineSpecs(quote),
+    ...accountRiskLineSpecs(account),
+    ...openPositions.flatMap(positionPriceLineSpecs),
+  ]
+  const activeKeys = new Set(specs.map((spec) => spec.key))
+
+  for (const [key, managedLine] of managedLines) {
+    if (!activeKeys.has(key)) {
+      candleSeries.removePriceLine(managedLine.line)
+      managedLines.delete(key)
     }
   }
 
-  for (const position of openPositions) {
-    const fingerprint = [
-      position.side,
-      position.entryPrice,
-      position.leverage,
-    ].join(':')
-    const existingLine = entryLines.get(position.id)
+  for (const spec of specs) {
+    const existingLine = managedLines.get(spec.key)
 
-    if (existingLine?.fingerprint === fingerprint) {
+    if (existingLine?.fingerprint === spec.fingerprint) {
       continue
     }
 
-    const options = positionEntryLineOptions(position)
-
     if (existingLine === undefined) {
-      entryLines.set(position.id, {
-        line: candleSeries.createPriceLine(options),
-        fingerprint,
+      managedLines.set(spec.key, {
+        line: candleSeries.createPriceLine(spec.options),
+        fingerprint: spec.fingerprint,
       })
       continue
     }
 
-    existingLine.line.applyOptions(options)
-    existingLine.fingerprint = fingerprint
+    existingLine.line.applyOptions(spec.options)
+    existingLine.fingerprint = spec.fingerprint
   }
 }
 
@@ -221,14 +339,20 @@ function CandleValue({
 export function BtcChart({
   onSessionExpired,
   openPositions,
+  account,
+  quote,
 }: BtcChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
-  const positionEntryLinesRef = useRef<Map<string, PositionEntryLine>>(
+  const managedPriceLinesRef = useRef<Map<string, ManagedPriceLine>>(
     new Map(),
   )
   const openPositionsRef = useRef(openPositions)
   openPositionsRef.current = openPositions
+  const accountRef = useRef(account)
+  accountRef.current = account
+  const quoteRef = useRef(quote)
+  quoteRef.current = quote
   const [selectedInterval, setSelectedInterval] =
     useState<BtcCandleInterval>('1h')
   const activeIntervalRef = useRef<BtcCandleInterval>('1h')
@@ -341,10 +465,12 @@ export function BtcChart({
       },
     )
     candleSeriesRef.current = candleSeries
-    synchronizePositionEntryLines(
+    synchronizePriceLines(
       candleSeries,
-      positionEntryLinesRef.current,
+      managedPriceLinesRef.current,
       openPositionsRef.current,
+      accountRef.current,
+      quoteRef.current,
     )
 
     function orderedCandles(): MarketCandle[] {
@@ -359,11 +485,12 @@ export function BtcChart({
       const firstCandleTime = history.candles.at(0)?.time
 
       if (
-        history.symbol !== 'BTCUSDT' ||
-        history.interval !== selectedInterval
+          history.symbol !== 'BTCUSDT' ||
+          history.productType !== 'USD_M_PERPETUAL' ||
+          history.interval !== selectedInterval
       ) {
         throw new Error(
-          `Expected BTCUSDT ${selectedInterval} candles but received ${history.symbol} ${history.interval}.`,
+          `Expected BTCUSDT USD-M perpetual ${selectedInterval} candles but received ${history.symbol} ${history.productType} ${history.interval}.`,
         )
       }
 
@@ -707,10 +834,11 @@ export function BtcChart({
 
         if (
           candle.symbol !== 'BTCUSDT' ||
+          candle.productType !== 'USD_M_PERPETUAL' ||
           candle.interval !== selectedInterval
         ) {
           stopForUnexpectedMessage(
-            `Expected BTCUSDT ${selectedInterval} live candles but received ${candle.symbol} ${candle.interval}.`,
+            `Expected BTCUSDT USD-M perpetual ${selectedInterval} live candles but received ${candle.symbol} ${candle.productType} ${candle.interval}.`,
           )
           return
         }
@@ -930,7 +1058,7 @@ export function BtcChart({
 
       if (candleSeriesRef.current === candleSeries) {
         candleSeriesRef.current = null
-        positionEntryLinesRef.current.clear()
+        managedPriceLinesRef.current.clear()
       }
 
       chart.remove()
@@ -941,13 +1069,15 @@ export function BtcChart({
     const candleSeries = candleSeriesRef.current
 
     if (candleSeries !== null) {
-      synchronizePositionEntryLines(
+      synchronizePriceLines(
         candleSeries,
-        positionEntryLinesRef.current,
+        managedPriceLinesRef.current,
         openPositions,
+        account,
+        quote,
       )
     }
-  }, [openPositions])
+  }, [openPositions, account, quote])
 
   const displayedStatus = statusLabel(historyStatus, streamStatus)
   const isLive = historyStatus === 'ready' && streamStatus === 'live'
@@ -972,7 +1102,7 @@ export function BtcChart({
     <section className="chart-card">
       <header className="chart-heading">
         <div>
-          <span className="panel-label">BTC / USDT · Spot market</span>
+          <span className="panel-label">BTC / USDT · USDⓈ-M perpetual</span>
           <div className="chart-title-row">
             <h2>Bitcoin price</h2>
             <span className="timeframe-chip">{intervalDetails.label}</span>
@@ -1047,6 +1177,18 @@ export function BtcChart({
               : volumeFormatter.format(latestCandle.volume)
           }
         />
+        <CandleValue
+          label="Last"
+          value={quote === null ? '—' : priceFormatter.format(quote.lastPrice)}
+        />
+        <CandleValue
+          label="Mark"
+          value={quote === null ? '—' : priceFormatter.format(quote.markPrice)}
+        />
+        <CandleValue
+          label="Index"
+          value={quote === null ? '—' : priceFormatter.format(quote.indexPrice)}
+        />
       </div>
 
       <div className="chart-stage">
@@ -1120,7 +1262,7 @@ export function BtcChart({
       </div>
 
       <div className="chart-footer">
-        <span>Binance {intervalDetails.description} trade-price candles</span>
+        <span>Binance BTCUSDT perpetual {intervalDetails.description} trade-price candles</span>
         <span>Scroll to zoom · drag left to load history</span>
       </div>
     </section>
@@ -1132,7 +1274,7 @@ export function LockedBtcChart() {
     <section className="chart-card chart-card-locked">
       <header className="chart-heading">
         <div>
-          <span className="panel-label">BTC / USDT · Spot market</span>
+          <span className="panel-label">BTC / USDT · USDⓈ-M perpetual</span>
           <div className="chart-title-row">
             <h2>Bitcoin price</h2>
             <span className="timeframe-chip">1H+</span>
@@ -1148,7 +1290,7 @@ export function LockedBtcChart() {
         <span className="chart-lock-icon" aria-hidden="true">◇</span>
         <strong>Connect your wallet to open the chart</strong>
         <p>
-          Historical hourly-and-higher candles and the live BTC market stream
+          Historical USDⓈ-M perpetual candles and the live BTC market stream
           are available inside an authenticated session.
         </p>
       </div>

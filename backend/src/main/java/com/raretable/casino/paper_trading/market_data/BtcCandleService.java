@@ -22,6 +22,7 @@ import com.raretable.casino.paper_trading.market_data.persistence.StoredCandle;
 public final class BtcCandleService implements CandleHistoryQuery
 {
     public static final String SYMBOL = "BTCUSDT";
+    public static final String PRODUCT_TYPE = "USD_M_PERPETUAL";
     static final String INTERVAL = BtcCandleInterval.ONE_HOUR.value();
 
     private final MarketCandleRepository repository;
@@ -116,6 +117,7 @@ public final class BtcCandleService implements CandleHistoryQuery
         Long nextBefore = hasMore ? candles.getFirst().time() : null;
         return new BtcCandlesResponse(
             SYMBOL,
+            PRODUCT_TYPE,
             interval.value(),
             candles,
             hasMore,

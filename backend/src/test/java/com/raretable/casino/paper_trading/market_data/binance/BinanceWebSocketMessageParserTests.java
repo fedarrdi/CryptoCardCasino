@@ -64,7 +64,10 @@ class BinanceWebSocketMessageParserTests
                   "stream": "btcusdt@aggTrade",
                   "data": {
                     "e": "aggTrade",
+                    "st": 1,
+                    "E": 1785140000124,
                     "s": "BTCUSDT",
+                    "a": 99887766,
                     "p": "64999.12000000",
                     "T": 1785140000123
                   }
@@ -72,6 +75,7 @@ class BinanceWebSocketMessageParserTests
                 """)
         );
 
+        assertEquals(99887766L, event.aggregateTradeId());
         assertEquals(new BigDecimal("64999.12000000"), event.price());
         assertEquals(
             java.time.Instant.parse("2026-07-27T08:13:20.123Z"),
@@ -88,6 +92,11 @@ class BinanceWebSocketMessageParserTests
                 {
                   "stream": "btcusdt@bookTicker",
                   "data": {
+                    "e": "bookTicker",
+                    "st": 1,
+                    "u": 123456789,
+                    "E": 1785140000124,
+                    "T": 1785140000123,
                     "s": "BTCUSDT",
                     "b": "64999.10000000",
                     "a": "64999.30000000"
@@ -96,6 +105,7 @@ class BinanceWebSocketMessageParserTests
                 """)
         );
 
+        assertEquals(123456789L, event.updateId());
         assertEquals(
             new BigDecimal("64999.10000000"),
             event.quote().bidPrice()
@@ -103,6 +113,67 @@ class BinanceWebSocketMessageParserTests
         assertEquals(
             new BigDecimal("64999.30000000"),
             event.quote().askPrice()
+        );
+        assertEquals(
+            java.time.Instant.parse("2026-07-27T08:13:20.123Z"),
+            event.observedAt()
+        );
+    }
+
+    @Test
+    void mapsMarkIndexAndFundingData()
+    {
+        BinanceMarkPriceStreamEvent event = assertInstanceOf(
+            BinanceMarkPriceStreamEvent.class,
+            parser.parse("""
+                {
+                  "stream": "btcusdt@markPrice@1s",
+                  "data": {
+                    "e": "markPriceUpdate",
+                    "st": 1,
+                    "E": 1785140000123,
+                    "s": "BTCUSDT",
+                    "p": "65001.25000000",
+                    "i": "64998.75000000",
+                    "r": "0.00010000",
+                    "T": 1785168000000
+                  }
+                }
+                """)
+        );
+
+        assertEquals(new BigDecimal("65001.25000000"), event.markPrice());
+        assertEquals(new BigDecimal("64998.75000000"), event.indexPrice());
+        assertEquals(new BigDecimal("0.00010000"), event.fundingRate());
+        assertEquals(
+            java.time.Instant.parse("2026-07-27T16:00:00Z"),
+            event.nextFundingTime()
+        );
+        assertEquals(
+            java.time.Instant.parse("2026-07-27T08:13:20.123Z"),
+            event.observedAt()
+        );
+    }
+
+    @Test
+    void rejectsNonUsdMStreamPayloads()
+    {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse("""
+                {
+                  "stream": "btcusdt@aggTrade",
+                  "data": {
+                    "e": "aggTrade",
+                    "st": 2,
+                    "E": 1785140000124,
+                    "s": "BTCUSDT",
+                    "a": 99887766,
+                    "p": "64999.12000000",
+                    "T": 1785140000123
+                  }
+                }
+                """)
         );
     }
 

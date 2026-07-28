@@ -13,17 +13,28 @@ import com.raretable.casino.paper_trading.market_data.CandleHistoryQuery;
 public record MarketDataProperties(
     boolean enabled,
     URI restBaseUri,
-    URI webSocketUri,
+    URI marketWebSocketUri,
+    URI publicWebSocketUri,
     Instant initialOpenTime,
     Duration reconciliationInterval,
     Duration reconnectDelay,
+    Duration maxStaleness,
     int historyLimit
 )
 {
     public MarketDataProperties
     {
         requireScheme(restBaseUri, "https", "REST base URI");
-        requireScheme(webSocketUri, "wss", "WebSocket URI");
+        requireScheme(
+            marketWebSocketUri,
+            "wss",
+            "Market WebSocket URI"
+        );
+        requireScheme(
+            publicWebSocketUri,
+            "wss",
+            "Public WebSocket URI"
+        );
 
         if (initialOpenTime == null)
         {
@@ -42,6 +53,7 @@ public record MarketDataProperties(
 
         requirePositive(reconciliationInterval, "Reconciliation interval");
         requirePositive(reconnectDelay, "Reconnect delay");
+        requirePositive(maxStaleness, "Market-data max staleness");
 
         if (historyLimit <= 0
             || historyLimit > CandleHistoryQuery.MAX_PAGE_SIZE)

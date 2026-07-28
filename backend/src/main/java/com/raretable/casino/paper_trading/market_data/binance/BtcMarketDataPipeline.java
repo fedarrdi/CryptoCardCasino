@@ -12,6 +12,7 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
 import com.raretable.casino.paper_trading.market_data.BtcCandleService;
+import com.raretable.casino.paper_trading.trading.PaperFundingService;
 
 @Component
 @ConditionalOnProperty(
@@ -27,6 +28,7 @@ final class BtcMarketDataPipeline implements SmartLifecycle
     private final BtcCandleService candleService;
     private final BinanceMarketDataWebSocketClient liveClient;
     private final MarketDataProperties properties;
+    private final PaperFundingService fundingService;
     private final ScheduledExecutorService reconciliationExecutor =
         Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform()
@@ -39,12 +41,14 @@ final class BtcMarketDataPipeline implements SmartLifecycle
     BtcMarketDataPipeline(
         BtcCandleService candleService,
         BinanceMarketDataWebSocketClient liveClient,
-        MarketDataProperties properties
+        MarketDataProperties properties,
+        PaperFundingService fundingService
     )
     {
         this.candleService = candleService;
         this.liveClient = liveClient;
         this.properties = properties;
+        this.fundingService = fundingService;
     }
 
     @Override
@@ -82,8 +86,11 @@ final class BtcMarketDataPipeline implements SmartLifecycle
         try
         {
             liveClient.start();
-            candleService.reconcileAll();
-            scheduleReconciliation(properties.reconciliationInterval().toMillis());
+            reconcileCandles();
+            reconcileFunding();
+            scheduleReconciliation(
+                properties.reconciliationInterval().toMillis()
+            );
         }
         catch (RuntimeException exception)
         {
@@ -99,17 +106,40 @@ final class BtcMarketDataPipeline implements SmartLifecycle
             return;
         }
 
+        reconcileCandles();
+        reconcileFunding();
+        scheduleReconciliation(
+            properties.reconciliationInterval().toMillis()
+        );
+    }
+
+    private void reconcileCandles()
+    {
         try
         {
             candleService.reconcileAll();
         }
         catch (RuntimeException exception)
         {
-            LOGGER.error("Periodic BTC candle reconciliation failed", exception);
+            LOGGER.error(
+                "BTC perpetual candle reconciliation failed",
+                exception
+            );
         }
-        finally
+    }
+
+    private void reconcileFunding()
+    {
+        try
         {
-            scheduleReconciliation(properties.reconciliationInterval().toMillis());
+            fundingService.reconcile();
+        }
+        catch (RuntimeException exception)
+        {
+            LOGGER.error(
+                "BTC perpetual funding reconciliation failed",
+                exception
+            );
         }
     }
 

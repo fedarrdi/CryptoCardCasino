@@ -5,7 +5,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.raretable.casino.paper_trading.api.OpenPositionRequest;
+import com.raretable.casino.paper_trading.api.PaperPositionPreviewResponse;
 import com.raretable.casino.paper_trading.api.PaperTradingPortfolioResponse;
+import com.raretable.casino.paper_trading.api.PreviewPositionRequest;
 import com.raretable.casino.paper_trading.api.UpdateRiskControlsRequest;
 
 public interface PaperTradingOperations
@@ -18,6 +20,11 @@ public interface PaperTradingOperations
     PaperTradingPortfolioResponse openPosition(
         UUID userId,
         OpenPositionRequest request
+    );
+
+    PaperPositionPreviewResponse previewPosition(
+        UUID userId,
+        PreviewPositionRequest request
     );
 
     PaperTradingPortfolioResponse updateRiskControls(
@@ -33,6 +40,11 @@ public interface PaperTradingOperations
 
     void processRiskControls(
         BigDecimal observedTradePrice,
+        Instant observedAt
+    );
+
+    void processLiquidations(
+        BigDecimal observedMarkPrice,
         Instant observedAt
     );
 }

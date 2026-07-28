@@ -55,7 +55,30 @@ public final class PaperTradingRiskMonitor implements DisposableBean
             return;
         }
         observedPrices.addLast(
-            new MarketPriceSignal(observedTradePrice, observedAt)
+            new MarketPriceSignal(
+                MarketPriceSignal.MarketPriceType.LAST,
+                observedTradePrice,
+                observedAt
+            )
+        );
+        scheduleDrain(0);
+    }
+
+    public void acceptMarkPrice(
+        BigDecimal observedMarkPrice,
+        Instant observedAt
+    )
+    {
+        if (!running.get())
+        {
+            return;
+        }
+        observedPrices.addLast(
+            new MarketPriceSignal(
+                MarketPriceSignal.MarketPriceType.MARK,
+                observedMarkPrice,
+                observedAt
+            )
         );
         scheduleDrain(0);
     }
@@ -105,10 +128,23 @@ public final class PaperTradingRiskMonitor implements DisposableBean
             {
                 try
                 {
-                    tradingService.processRiskControls(
-                        signal.price(),
-                        signal.observedAt()
-                    );
+                    if (
+                        signal.type()
+                            == MarketPriceSignal.MarketPriceType.LAST
+                    )
+                    {
+                        tradingService.processRiskControls(
+                            signal.price(),
+                            signal.observedAt()
+                        );
+                    }
+                    else
+                    {
+                        tradingService.processLiquidations(
+                            signal.price(),
+                            signal.observedAt()
+                        );
+                    }
                 }
                 catch (RuntimeException exception)
                 {

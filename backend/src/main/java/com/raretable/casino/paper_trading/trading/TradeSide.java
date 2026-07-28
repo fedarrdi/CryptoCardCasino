@@ -43,28 +43,28 @@ public enum TradeSide
         }
 
         @Override
-        void validateRiskControls(
-            BtcQuote quote,
+        public void validateRiskControls(
+            BigDecimal triggerPrice,
             BigDecimal stopLoss,
             BigDecimal takeProfit
         )
         {
             if (
                 stopLoss != null
-                && stopLoss.compareTo(quote.bidPrice()) >= 0
+                && stopLoss.compareTo(triggerPrice) >= 0
             )
             {
                 throw new IllegalArgumentException(
-                    "Long stop loss must be below the current bid"
+                    "Long stop loss must be below the current last price"
                 );
             }
             if (
                 takeProfit != null
-                && takeProfit.compareTo(quote.askPrice()) <= 0
+                && takeProfit.compareTo(triggerPrice) <= 0
             )
             {
                 throw new IllegalArgumentException(
-                    "Long take profit must be above the current ask"
+                    "Long take profit must be above the current last price"
                 );
             }
         }
@@ -106,28 +106,28 @@ public enum TradeSide
         }
 
         @Override
-        void validateRiskControls(
-            BtcQuote quote,
+        public void validateRiskControls(
+            BigDecimal triggerPrice,
             BigDecimal stopLoss,
             BigDecimal takeProfit
         )
         {
             if (
                 stopLoss != null
-                && stopLoss.compareTo(quote.askPrice()) <= 0
+                && stopLoss.compareTo(triggerPrice) <= 0
             )
             {
                 throw new IllegalArgumentException(
-                    "Short stop loss must be above the current ask"
+                    "Short stop loss must be above the current last price"
                 );
             }
             if (
                 takeProfit != null
-                && takeProfit.compareTo(quote.bidPrice()) >= 0
+                && takeProfit.compareTo(triggerPrice) >= 0
             )
             {
                 throw new IllegalArgumentException(
-                    "Short take profit must be below the current bid"
+                    "Short take profit must be below the current last price"
                 );
             }
         }
@@ -147,8 +147,8 @@ public enum TradeSide
 
     abstract boolean takeProfitTriggered(BigDecimal price, BigDecimal takeProfit);
 
-    abstract void validateRiskControls(
-        BtcQuote quote,
+    public abstract void validateRiskControls(
+        BigDecimal triggerPrice,
         BigDecimal stopLoss,
         BigDecimal takeProfit
     );

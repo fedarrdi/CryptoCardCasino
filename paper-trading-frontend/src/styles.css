@@ -834,7 +834,7 @@ footer {
 }
 
 .quote-block {
-  min-width: 220px;
+  min-width: 310px;
   display: flex;
   align-items: flex-end;
   flex-direction: column;
@@ -853,6 +853,29 @@ footer {
   gap: 9px;
   color: #a2aaa0;
   font-size: 10px;
+}
+
+.perpetual-prices {
+  margin: 5px 0 2px;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 13px;
+}
+
+.perpetual-prices span {
+  display: grid;
+  gap: 2px;
+  color: #cbd2c7;
+  font-size: 10px;
+}
+
+.perpetual-prices small {
+  color: #697067;
+  font-size: 7px;
+}
+
+.funding-quote {
+  color: #b5c58e !important;
 }
 
 .quote-block > span > i {
@@ -902,8 +925,12 @@ footer {
   border-right: 1px solid #282d28;
 }
 
-.account-metrics > div:last-child {
+.account-metrics > div:nth-child(4n) {
   border-right: 0;
+}
+
+.account-metrics > div:nth-child(n + 5) {
+  border-top: 1px solid #282d28;
 }
 
 .account-metrics span:first-child,
@@ -927,6 +954,24 @@ footer {
 .account-metrics small {
   color: #60675e;
   font-size: 9px;
+}
+
+.risk-state {
+  color: #9ba494;
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.risk-warning,
+.risk-elevated {
+  color: #f0b90b;
+}
+
+.risk-liquidation,
+.risk-liquidating {
+  color: #ff705c;
 }
 
 .pnl-value {
@@ -1132,6 +1177,11 @@ footer {
   font-size: 8px;
 }
 
+.ticket-field > span button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .ticket-field > span small {
   color: #5e655c;
   font-size: 7px;
@@ -1240,6 +1290,16 @@ footer {
   font-weight: 500;
 }
 
+.order-preview-state {
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  color: #747c71;
+  font-size: 8px;
+  line-height: 1.55;
+  text-align: center;
+}
+
 .form-error {
   margin: 12px 0 0;
   color: #ff9e90;
@@ -1310,7 +1370,7 @@ footer {
   padding: 21px 24px;
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
   gap: 24px;
   border-bottom: 1px solid #272c27;
 }
@@ -1360,7 +1420,7 @@ footer {
   margin: 0;
   display: grid;
   grid-template-columns: repeat(6, minmax(72px, 1fr));
-  gap: 14px;
+  gap: 17px 14px;
 }
 
 .position-metrics div {
@@ -1391,6 +1451,12 @@ footer {
 .position-actions {
   display: flex;
   gap: 7px;
+}
+
+.liquidation-reason {
+  color: #ff705c;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .position-actions button,
@@ -1500,6 +1566,7 @@ footer {
 
 .trades-table {
   width: 100%;
+  min-width: 980px;
   border-collapse: collapse;
   text-align: left;
 }
@@ -1559,11 +1626,16 @@ footer {
 
 .close-preview {
   width: min(460px, 100%);
+  max-height: calc(100vh - 40px);
   overflow: hidden;
   border: 1px solid #343a33;
   border-radius: 16px;
   background: #111411;
   box-shadow: 0 32px 90px rgba(0, 0, 0, 0.58);
+}
+
+.close-preview {
+  overflow-y: auto;
 }
 
 .close-preview header {
@@ -1694,12 +1766,16 @@ footer {
     grid-template-columns: 1fr 1fr;
   }
 
-  .account-metrics > div:nth-child(2) {
+  .account-metrics > div:nth-child(even) {
     border-right: 0;
   }
 
-  .account-metrics > div:nth-child(-n + 2) {
-    border-bottom: 1px solid #282d28;
+  .account-metrics > div:nth-child(odd) {
+    border-right: 1px solid #282d28;
+  }
+
+  .account-metrics > div:nth-child(n + 3) {
+    border-top: 1px solid #282d28;
   }
 
   .market-layout {
@@ -1782,7 +1858,14 @@ footer {
 
   .account-metrics > div {
     border-right: 0;
+    border-top: 0;
     border-bottom: 1px solid #282d28;
+  }
+
+  .account-metrics > div:nth-child(odd),
+  .account-metrics > div:nth-child(n + 3) {
+    border-right: 0;
+    border-top: 0;
   }
 
   .account-metrics > div:last-child {

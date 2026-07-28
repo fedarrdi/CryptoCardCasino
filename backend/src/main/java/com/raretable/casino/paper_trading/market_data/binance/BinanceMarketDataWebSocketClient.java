@@ -1,8 +1,11 @@
 package com.raretable.casino.paper_trading.market_data.binance;
 
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -42,11 +45,7 @@ final class BinanceMarketDataWebSocketClient
                 .factory()
         );
     private final AtomicBoolean running = new AtomicBoolean();
-    private final AtomicBoolean connecting = new AtomicBoolean();
-    private final AtomicBoolean reconnectScheduled = new AtomicBoolean();
-    private final AtomicReference<WebSocket> connection = new AtomicReference<>();
-    private final AtomicReference<ScheduledFuture<?>> reconnectTask =
-        new AtomicReference<>();
+    private final Map<Route, Channel> channels;
 
     BinanceMarketDataWebSocketClient(
         HttpClient httpClient,
@@ -65,13 +64,23 @@ final class BinanceMarketDataWebSocketClient
         this.browserClients = browserClients;
         this.riskMonitor = riskMonitor;
         this.binance = binance;
+
+        channels = new EnumMap<>(Route.class);
+        channels.put(
+            Route.MARKET,
+            new Channel(Route.MARKET, properties.marketWebSocketUri())
+        );
+        channels.put(
+            Route.PUBLIC,
+            new Channel(Route.PUBLIC, properties.publicWebSocketUri())
+        );
     }
 
     void start()
     {
         if (running.compareAndSet(false, true))
         {
-            connect();
+            channels.values().forEach(this::connect);
         }
     }
 
@@ -82,70 +91,82 @@ final class BinanceMarketDataWebSocketClient
             return;
         }
 
-        ScheduledFuture<?> scheduled = reconnectTask.getAndSet(null);
-        if (scheduled != null)
-        {
-            scheduled.cancel(false);
-        }
-
         browserClients.clearLiveSnapshots();
-        binance.clearBtcQuote();
-        WebSocket webSocket = connection.getAndSet(null);
-        if (webSocket != null)
+        binance.clear();
+        for (Channel channel : channels.values())
         {
-            webSocket.sendClose(
-                WebSocket.NORMAL_CLOSURE,
-                "Application stopping"
-            );
+            ScheduledFuture<?> scheduled =
+                channel.reconnectTask.getAndSet(null);
+            if (scheduled != null)
+            {
+                scheduled.cancel(false);
+            }
+
+            WebSocket webSocket = channel.connection.getAndSet(null);
+            if (webSocket != null)
+            {
+                webSocket.sendClose(
+                    WebSocket.NORMAL_CLOSURE,
+                    "Application stopping"
+                );
+            }
         }
         reconnectExecutor.shutdownNow();
     }
 
-    private void connect()
+    private void connect(Channel channel)
     {
         if (!running.get()
-            || connection.get() != null
-            || !connecting.compareAndSet(false, true))
+            || channel.connection.get() != null
+            || !channel.connecting.compareAndSet(false, true))
         {
             return;
         }
 
         httpClient.newWebSocketBuilder()
             .connectTimeout(Duration.ofSeconds(10))
-            .buildAsync(properties.webSocketUri(), new Listener())
+            .buildAsync(channel.uri, new Listener(channel))
             .whenComplete((webSocket, failure) -> {
-                connecting.set(false);
+                channel.connecting.set(false);
                 if (failure != null)
                 {
-                    browserClients.clearLiveSnapshots();
+                    clear(channel.route);
                     LOGGER.warn(
-                        "Could not connect to the Binance kline stream",
+                        "Could not connect to the Binance {} streams",
+                        channel.route.label,
                         failure
                     );
-                    scheduleReconnect();
+                    scheduleReconnect(channel);
                 }
             });
     }
 
-    private void scheduleReconnect()
+    private void scheduleReconnect(Channel channel)
     {
-        if (!running.get() || !reconnectScheduled.compareAndSet(false, true))
+        if (!running.get()
+            || !channel.reconnectScheduled.compareAndSet(false, true))
         {
             return;
         }
 
         long delayMillis = properties.reconnectDelay().toMillis();
-        reconnectTask.set(reconnectExecutor.schedule(() -> {
-            reconnectScheduled.set(false);
-            connect();
+        channel.reconnectTask.set(reconnectExecutor.schedule(() -> {
+            channel.reconnectScheduled.set(false);
+            connect(channel);
         }, delayMillis, TimeUnit.MILLISECONDS));
     }
 
-    private void accept(WebSocket webSocket, String message)
+    private void accept(
+        Channel channel,
+        WebSocket webSocket,
+        String message
+    )
     {
         try
         {
             BinanceStreamEvent event = parser.parse(message);
+            requireCorrectRoute(channel.route, event);
+
             if (event instanceof BinanceCandleStreamEvent candleEvent)
             {
                 LiveBtcCandle candle = candleEvent.candle();
@@ -157,6 +178,10 @@ final class BinanceMarketDataWebSocketClient
             }
             else if (event instanceof BinanceTradeStreamEvent tradeEvent)
             {
+                binance.updateLastPrice(
+                    tradeEvent.price(),
+                    tradeEvent.observedAt()
+                );
                 riskMonitor.accept(
                     tradeEvent.price(),
                     tradeEvent.observedAt()
@@ -164,38 +189,98 @@ final class BinanceMarketDataWebSocketClient
             }
             else if (event instanceof BinanceBookTickerStreamEvent bookEvent)
             {
-                binance.updateBtcQuote(bookEvent.quote());
+                binance.updateBtcQuote(
+                    bookEvent.quote(),
+                    bookEvent.observedAt()
+                );
+            }
+            else if (event instanceof BinanceMarkPriceStreamEvent markEvent)
+            {
+                binance.updateMarkPrice(
+                    markEvent.markPrice(),
+                    markEvent.indexPrice(),
+                    markEvent.fundingRate(),
+                    markEvent.nextFundingTime(),
+                    markEvent.observedAt()
+                );
+                riskMonitor.acceptMarkPrice(
+                    markEvent.markPrice(),
+                    markEvent.observedAt()
+                );
             }
             webSocket.request(1);
         }
         catch (RuntimeException exception)
         {
-            failConnection(webSocket, exception);
+            failConnection(channel, webSocket, exception);
         }
     }
 
-    private void failConnection(WebSocket webSocket, Throwable failure)
+    private static void requireCorrectRoute(
+        Route route,
+        BinanceStreamEvent event
+    )
     {
-        LOGGER.error("Binance kline stream failed", failure);
-        boolean activeConnection = connection.compareAndSet(webSocket, null);
+        boolean correct = route == Route.PUBLIC
+            ? event instanceof BinanceBookTickerStreamEvent
+            : !(event instanceof BinanceBookTickerStreamEvent);
+        if (!correct)
+        {
+            throw new IllegalArgumentException(
+                "Binance sent market data through the wrong routed endpoint"
+            );
+        }
+    }
+
+    private void failConnection(
+        Channel channel,
+        WebSocket webSocket,
+        Throwable failure
+    )
+    {
+        LOGGER.error(
+            "Binance {} stream failed",
+            channel.route.label,
+            failure
+        );
+        boolean activeConnection =
+            channel.connection.compareAndSet(webSocket, null);
         webSocket.abort();
         if (activeConnection)
         {
+            clear(channel.route);
+            scheduleReconnect(channel);
+        }
+    }
+
+    private void clear(Route route)
+    {
+        if (route == Route.MARKET)
+        {
             browserClients.clearLiveSnapshots();
+            binance.clearMarketPrices();
+        }
+        else
+        {
             binance.clearBtcQuote();
-            scheduleReconnect();
         }
     }
 
     private final class Listener implements WebSocket.Listener
     {
+        private final Channel channel;
         private final StringBuilder fragments = new StringBuilder();
+
+        private Listener(Channel channel)
+        {
+            this.channel = channel;
+        }
 
         @Override
         public void onOpen(WebSocket webSocket)
         {
             if (!running.get()
-                || !connection.compareAndSet(null, webSocket))
+                || !channel.connection.compareAndSet(null, webSocket))
             {
                 webSocket.abort();
                 return;
@@ -204,13 +289,14 @@ final class BinanceMarketDataWebSocketClient
             try
             {
                 LOGGER.info(
-                    "Connected to the Binance BTCUSDT market-data streams"
+                    "Connected to the Binance BTCUSDT perpetual {} streams",
+                    channel.route.label
                 );
                 webSocket.request(1);
             }
             catch (RuntimeException exception)
             {
-                failConnection(webSocket, exception);
+                failConnection(channel, webSocket, exception);
             }
         }
 
@@ -226,7 +312,7 @@ final class BinanceMarketDataWebSocketClient
             {
                 String message = fragments.toString();
                 fragments.setLength(0);
-                accept(webSocket, message);
+                accept(channel, webSocket, message);
             }
             else
             {
@@ -243,19 +329,19 @@ final class BinanceMarketDataWebSocketClient
         )
         {
             boolean activeConnection =
-                connection.compareAndSet(webSocket, null);
+                channel.connection.compareAndSet(webSocket, null);
             if (activeConnection)
             {
-                browserClients.clearLiveSnapshots();
-                binance.clearBtcQuote();
+                clear(channel.route);
             }
             LOGGER.info(
-                "Binance kline stream closed with status {}",
+                "Binance {} stream closed with status {}",
+                channel.route.label,
                 statusCode
             );
             if (activeConnection)
             {
-                scheduleReconnect();
+                scheduleReconnect(channel);
             }
             return null;
         }
@@ -263,7 +349,38 @@ final class BinanceMarketDataWebSocketClient
         @Override
         public void onError(WebSocket webSocket, Throwable error)
         {
-            failConnection(webSocket, error);
+            failConnection(channel, webSocket, error);
+        }
+    }
+
+    private static final class Channel
+    {
+        private final Route route;
+        private final URI uri;
+        private final AtomicBoolean connecting = new AtomicBoolean();
+        private final AtomicBoolean reconnectScheduled = new AtomicBoolean();
+        private final AtomicReference<WebSocket> connection =
+            new AtomicReference<>();
+        private final AtomicReference<ScheduledFuture<?>> reconnectTask =
+            new AtomicReference<>();
+
+        private Channel(Route route, URI uri)
+        {
+            this.route = route;
+            this.uri = uri;
+        }
+    }
+
+    private enum Route
+    {
+        MARKET("market"),
+        PUBLIC("public");
+
+        private final String label;
+
+        Route(String label)
+        {
+            this.label = label;
         }
     }
 }

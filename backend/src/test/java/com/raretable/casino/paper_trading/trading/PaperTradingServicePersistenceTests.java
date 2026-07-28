@@ -29,15 +29,20 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.raretable.casino.InfrastructureTestConfiguration;
 import com.raretable.casino.paper_trading.api.OpenPositionRequest;
 import com.raretable.casino.paper_trading.api.PaperPositionResponse;
 import com.raretable.casino.paper_trading.api.PaperTradingPortfolioResponse;
+import com.raretable.casino.paper_trading.api.PreviewPositionRequest;
 import com.raretable.casino.paper_trading.api.UpdateRiskControlsRequest;
+import com.raretable.casino.paper_trading.market_data.BinanceFundingRate;
+import com.raretable.casino.paper_trading.market_data.BinanceFundingRateSource;
 import com.raretable.casino.paper_trading.price.BinanceWrapper;
 import com.raretable.casino.paper_trading.price.BtcQuote;
+import com.raretable.casino.paper_trading.price.BtcPerpetualMarketSnapshot;
 import com.raretable.casino.user.User;
 import com.raretable.casino.user.UserService;
 
@@ -59,13 +64,22 @@ class PaperTradingServicePersistenceTests
     private JdbcPaperTradingRepository repository;
 
     @Autowired
+    private PaperFundingService fundingService;
+
+    @Autowired
+    private StubFundingRateSource fundingSource;
+
+    @Autowired
+    private JdbcClient jdbcClient;
+
+    @Autowired
     private UserService userService;
 
     @Autowired
     private StubBinanceWrapper binance;
 
     @Test
-    void previewsLongAndShortPnlAtExecutableBidAndAskThenPersistsClose()
+    void separatesMarkPnlFromExecutableCloseAndPersistsNetPnl()
     {
         UUID userId = newUser("01").getUniqueId();
         binance.quote("99", "100");
@@ -83,17 +97,20 @@ class PaperTradingServicePersistenceTests
             .orElseThrow();
 
         assertDecimal("100", longPosition.entryPrice());
-        assertDecimal("99", longPosition.markPrice());
+        assertDecimal("99.5", longPosition.markPrice());
         assertDecimal("100", longPosition.quantity());
-        assertDecimal("-100", longPosition.unrealizedPnl());
-        assertDecimal("-10", longPosition.unrealizedRoePercent());
+        assertDecimal("-50", longPosition.unrealizedPnl());
+        assertDecimal("-5", longPosition.unrealizedRoePercent());
+        assertDecimal("4", longPosition.entryFee());
+        assertDecimal("-107.96", longPosition.estimatedNetPnl());
         assertEquals("MARKET", longPosition.orderType());
         assertEquals("CROSS", longPosition.marginMode());
 
         assertDecimal("99", shortPosition.entryPrice());
-        assertDecimal("100", shortPosition.markPrice());
+        assertDecimal("99.5", shortPosition.markPrice());
         assertDecimal("100", shortPosition.quantity());
-        assertDecimal("-100", shortPosition.unrealizedPnl());
+        assertDecimal("-50", shortPosition.unrealizedPnl());
+        assertDecimal("3.96", shortPosition.entryFee());
 
         binance.quote("109", "110");
         PaperTradingPortfolioResponse preview = service.getPortfolio(userId, 50);
@@ -106,14 +123,15 @@ class PaperTradingServicePersistenceTests
             shortPosition.id()
         );
 
-        assertDecimal("900", longPreview.unrealizedPnl());
-        assertDecimal("90", longPreview.unrealizedRoePercent());
-        assertDecimal("-1100", shortPreview.unrealizedPnl());
-        assertDecimal("-111.1111", shortPreview.unrealizedRoePercent());
-        assertDecimal("-200", preview.account().unrealizedPnl());
-        assertDecimal("9800", preview.account().equity());
-        assertDecimal("1990", preview.account().usedMargin());
-        assertDecimal("7810", preview.account().availableMargin());
+        assertDecimal("950", longPreview.unrealizedPnl());
+        assertDecimal("95", longPreview.unrealizedRoePercent());
+        assertDecimal("-1050", shortPreview.unrealizedPnl());
+        assertDecimal("-106.0606", shortPreview.unrealizedRoePercent());
+        assertDecimal("-100", preview.account().grossUnrealizedPnl());
+        assertDecimal("9892.04", preview.account().equity());
+        assertDecimal("2190", preview.account().initialMargin());
+        assertDecimal("8.76", preview.account().estimatedClosingFee());
+        assertDecimal("7693.28", preview.account().availableMargin());
 
         PaperTradingPortfolioResponse afterLongClose =
             service.closePosition(userId, longPosition.id());
@@ -125,12 +143,13 @@ class PaperTradingServicePersistenceTests
         assertEquals(TradeStatus.CLOSED, closedLong.status());
         assertEquals(TradeCloseReason.USER, closedLong.closeReason());
         assertDecimal("109", closedLong.exitPrice());
-        assertDecimal("900", closedLong.realizedPnl());
-        assertDecimal("10900", repository.getAccount(userId).balanceUsd());
+        assertDecimal("900", closedLong.grossRealizedPnl());
+        assertDecimal("891.64", closedLong.realizedPnl());
+        assertDecimal("10887.68", repository.getAccount(userId).balanceUsd());
 
         service.closePosition(userId, shortPosition.id());
 
-        assertDecimal("9800", repository.getAccount(userId).balanceUsd());
+        assertDecimal("9783.28", repository.getAccount(userId).balanceUsd());
         assertEquals(2, repository.findClosedTrades(userId, 50).size());
         assertTrue(repository.findOpenTrades(userId).isEmpty());
     }
@@ -149,13 +168,16 @@ class PaperTradingServicePersistenceTests
         binance.quote("90", "90");
         PaperTradingPortfolioResponse losingPortfolio =
             service.getPortfolio(userId, 50);
-        assertDecimal("-600", losingPortfolio.account().unrealizedPnl());
-        assertDecimal("3400", losingPortfolio.account().availableMargin());
+        assertDecimal(
+            "-600",
+            losingPortfolio.account().grossUnrealizedPnl()
+        );
+        assertDecimal("3995.44", losingPortfolio.account().availableMargin());
         assertThrows(
             InsufficientPaperMarginException.class,
             () -> service.openPosition(
                 userId,
-                open(TradeSide.LONG, "3500", 1, null, null)
+                open(TradeSide.LONG, "4100", 1, null, null)
             )
         );
 
@@ -246,7 +268,10 @@ class PaperTradingServicePersistenceTests
 
             assertEquals(1, successes);
             assertEquals(1, alreadyClosedFailures);
-            assertDecimal("11000", repository.getAccount(userId).balanceUsd());
+            assertDecimal(
+                "10991.6",
+                repository.getAccount(userId).balanceUsd()
+            );
             assertEquals(1, repository.findClosedTrades(userId, 50).size());
             assertTrue(repository.findOpenTrades(userId).isEmpty());
         }
@@ -306,8 +331,9 @@ class PaperTradingServicePersistenceTests
         assertEquals(TradeStatus.CLOSED, closed.status());
         assertEquals(TradeCloseReason.STOP_LOSS, closed.closeReason());
         assertDecimal("95", closed.exitPrice());
-        assertDecimal("-500", closed.realizedPnl());
-        assertDecimal("9500", repository.getAccount(userId).balanceUsd());
+        assertDecimal("-500", closed.grossRealizedPnl());
+        assertDecimal("-507.8", closed.realizedPnl());
+        assertDecimal("9492.2", repository.getAccount(userId).balanceUsd());
     }
 
     @Test
@@ -479,10 +505,262 @@ class PaperTradingServicePersistenceTests
             IllegalArgumentException.class,
             () -> service.openPosition(
                 userId,
-                open(TradeSide.SHORT, "1000", 1, null, "99")
+                open(TradeSide.SHORT, "1000", 1, null, "99.5")
             )
         );
         assertTrue(repository.findOpenTrades(userId).isEmpty());
+    }
+
+    @Test
+    void previewEnforcesAggregateTierLeverageAndShowsCrossLiquidation()
+    {
+        UUID userId = newUser("15").getUniqueId();
+        binance.quote("100", "100");
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.previewPosition(
+                userId,
+                new PreviewPositionRequest(
+                    TradeSide.LONG,
+                    100,
+                    new BigDecimal("5000"),
+                    null,
+                    null
+                )
+            )
+        );
+
+        var preview = service.previewPosition(
+            userId,
+            new PreviewPositionRequest(
+                TradeSide.LONG,
+                100,
+                new BigDecimal("4999"),
+                null,
+                null
+            )
+        );
+
+        assertEquals("RARETABLE_BTCUSDT_V1", preview.ruleVersion());
+        assertDecimal("499900", preview.notionalUsd());
+        assertDecimal("199.96", preview.entryFee());
+        assertTrue(preview.maxOrderMargin().compareTo(
+            new BigDecimal("5000")
+        ) < 0);
+        assertTrue(
+            preview.estimatedLiquidationPrice()
+                .compareTo(preview.bankruptcyPrice()) > 0
+        );
+        assertTrue(
+            preview.postOrderMaintenanceMarginRatioPercent().signum() > 0
+        );
+
+        service.openPosition(
+            userId,
+            open(TradeSide.LONG, "4999", 100, null, null)
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.previewPosition(
+                userId,
+                new PreviewPositionRequest(
+                    TradeSide.LONG,
+                    1,
+                    new BigDecimal("101"),
+                    null,
+                    null
+                )
+            )
+        );
+    }
+
+    @Test
+    void markLiquidationClosesTheWholeCrossAccountAndFloorsDebt()
+    {
+        UUID userId = newUser("16").getUniqueId();
+        binance.quote("100", "100");
+        UUID firstPositionId = service.openPosition(
+            userId,
+            open(TradeSide.LONG, "4500", 50, null, null)
+        ).openPositions().getFirst().id();
+        service.openPosition(
+            userId,
+            open(TradeSide.LONG, "4500", 50, null, null)
+        );
+        List<UUID> positionIds = repository.findOpenTrades(userId).stream()
+            .map(PaperTrade::id)
+            .toList();
+        assertEquals(2, positionIds.size());
+        assertTrue(positionIds.contains(firstPositionId));
+
+        binance.market("98", "98", "100", "98", "99");
+        service.processLiquidations(new BigDecimal("98"), NOW);
+        service.processLiquidations(new BigDecimal("98"), NOW);
+
+        for (UUID positionId : positionIds)
+        {
+            PaperTrade trade = repository.findTrade(positionId).orElseThrow();
+            assertEquals(TradeStatus.CLOSED, trade.status());
+            assertEquals(TradeCloseReason.LIQUIDATION, trade.closeReason());
+            assertDecimal("-4500", trade.grossRealizedPnl());
+            assertDecimal("88.2", trade.exitFee());
+            assertDecimal("2756.25", trade.liquidationFee());
+            assertDecimal("-7434.45", trade.realizedPnl());
+        }
+        assertDecimal("0", repository.getAccount(userId).balanceUsd());
+        assertEquals(
+            1L,
+            jdbcClient.sql("""
+                    SELECT COUNT(*)
+                    FROM paper_liquidation_events
+                    WHERE user_id = :userId
+                    """)
+                .param("userId", userId)
+                .query(Long.class)
+                .single()
+        );
+        assertDecimal(
+            "100",
+            jdbcClient.sql("""
+                    SELECT last_price
+                    FROM paper_liquidation_events
+                    WHERE user_id = :userId
+                    """)
+                .param("userId", userId)
+                .query(BigDecimal.class)
+                .single()
+        );
+        assertDecimal(
+            "98",
+            jdbcClient.sql("""
+                    SELECT mark_price
+                    FROM paper_liquidation_events
+                    WHERE user_id = :userId
+                    """)
+                .param("userId", userId)
+                .query(BigDecimal.class)
+                .single()
+        );
+        assertEquals(
+            1L,
+            jdbcClient.sql("""
+                    SELECT COUNT(*)
+                    FROM paper_account_ledger
+                    WHERE user_id = :userId
+                      AND event_type = 'INSURANCE_CREDIT'
+                    """)
+                .param("userId", userId)
+                .query(Long.class)
+                .single()
+        );
+    }
+
+    @Test
+    void newAccountsStartWithAnAuditableOpeningBalance()
+    {
+        UUID userId = newUser("18").getUniqueId();
+
+        assertDecimal(
+            "10000",
+            jdbcClient.sql("""
+                    SELECT amount_usd
+                    FROM paper_account_ledger
+                    WHERE user_id = :userId
+                      AND event_type = 'ACCOUNT_OPENED'
+                    """)
+                .param("userId", userId)
+                .query(BigDecimal.class)
+                .single()
+        );
+        assertDecimal(
+            "10000",
+            jdbcClient.sql("""
+                    SELECT balance_after_usd
+                    FROM paper_account_ledger
+                    WHERE user_id = :userId
+                      AND event_type = 'ACCOUNT_OPENED'
+                    """)
+                .param("userId", userId)
+                .query(BigDecimal.class)
+                .single()
+        );
+    }
+
+    @Test
+    void markObservedBeforeAPositionOpenedCannotLiquidateIt()
+    {
+        UUID userId = newUser("19").getUniqueId();
+        binance.quote("100", "100");
+        UUID positionId = service.openPosition(
+            userId,
+            open(TradeSide.LONG, "9000", 50, null, null)
+        ).openPositions().getFirst().id();
+        binance.market("98", "98", "100", "98", "99");
+
+        service.processLiquidations(
+            new BigDecimal("98"),
+            NOW.minusSeconds(1)
+        );
+
+        assertEquals(
+            TradeStatus.OPEN,
+            repository.findTrade(positionId).orElseThrow().status()
+        );
+    }
+
+    @Test
+    void fundingUsesSettlementMarkAndIsExactOnceForLongAndShort()
+    {
+        UUID userId = newUser("17").getUniqueId();
+        binance.quote("100", "100");
+        UUID longId = service.openPosition(
+            userId,
+            open(TradeSide.LONG, "100", 1, null, null)
+        ).openPositions().getFirst().id();
+        UUID shortId = service.openPosition(
+            userId,
+            open(TradeSide.SHORT, "100", 1, null, null)
+        ).openPositions().stream()
+            .filter(position -> position.side() == TradeSide.SHORT)
+            .findFirst()
+            .orElseThrow()
+            .id();
+        binance.market("200", "200", "200", "200", "200");
+        fundingSource.respondWith(new BinanceFundingRate(
+            "BTCUSDT",
+            NOW,
+            "FUNDING_RATE",
+            new BigDecimal("0.01"),
+            new BigDecimal("100")
+        ));
+
+        fundingService.reconcile();
+        fundingService.reconcile();
+
+        assertDecimal(
+            "-1",
+            repository.findTrade(longId).orElseThrow().fundingPnl()
+        );
+        assertDecimal(
+            "1",
+            repository.findTrade(shortId).orElseThrow().fundingPnl()
+        );
+        assertDecimal(
+            "9999.92",
+            repository.getAccount(userId).balanceUsd()
+        );
+        assertEquals(
+            2L,
+            jdbcClient.sql("""
+                    SELECT COUNT(*)
+                    FROM paper_trade_funding_settlements
+                    WHERE user_id = :userId
+                    """)
+                .param("userId", userId)
+                .query(Long.class)
+                .single()
+        );
     }
 
     private void openAfter(
@@ -570,7 +848,7 @@ class PaperTradingServicePersistenceTests
                 "91",
                 "90",
                 TradeCloseReason.STOP_LOSS,
-                "9000"
+                "8992.4"
             ),
             Arguments.of(
                 "06",
@@ -582,7 +860,7 @@ class PaperTradingServicePersistenceTests
                 "111",
                 "110",
                 TradeCloseReason.TAKE_PROFIT,
-                "11000"
+                "10991.6"
             ),
             Arguments.of(
                 "07",
@@ -594,7 +872,7 @@ class PaperTradingServicePersistenceTests
                 "110",
                 "110",
                 TradeCloseReason.STOP_LOSS,
-                "8900"
+                "8891.64"
             ),
             Arguments.of(
                 "08",
@@ -606,7 +884,7 @@ class PaperTradingServicePersistenceTests
                 "90",
                 "90",
                 TradeCloseReason.TAKE_PROFIT,
-                "10900"
+                "10892.44"
             )
         );
     }
@@ -628,6 +906,13 @@ class PaperTradingServicePersistenceTests
 
         @Bean
         @Primary
+        StubFundingRateSource stubFundingRateSource()
+        {
+            return new StubFundingRateSource();
+        }
+
+        @Bean
+        @Primary
         Clock fixedTradingClock()
         {
             return Clock.fixed(NOW, ZoneOffset.UTC);
@@ -636,23 +921,94 @@ class PaperTradingServicePersistenceTests
 
     static final class StubBinanceWrapper extends BinanceWrapper
     {
-        private final AtomicReference<BtcQuote> currentQuote =
+        private final AtomicReference<BtcPerpetualMarketSnapshot> market =
             new AtomicReference<>(
-                new BtcQuote(BigDecimal.ONE, BigDecimal.ONE)
+                snapshot(BigDecimal.ONE, BigDecimal.ONE)
             );
 
         void quote(String bid, String ask)
         {
-            currentQuote.set(new BtcQuote(
+            market.set(snapshot(
                 new BigDecimal(bid),
                 new BigDecimal(ask)
+            ));
+        }
+
+        void market(
+            String bid,
+            String ask,
+            String last,
+            String mark,
+            String index
+        )
+        {
+            market.set(new BtcPerpetualMarketSnapshot(
+                new BigDecimal(last),
+                NOW,
+                new BigDecimal(bid),
+                new BigDecimal(ask),
+                NOW,
+                new BigDecimal(mark),
+                new BigDecimal(index),
+                BigDecimal.ZERO,
+                NOW.plusSeconds(3600),
+                NOW
             ));
         }
 
         @Override
         public BtcQuote getBtcQuote()
         {
-            return currentQuote.get();
+            return market.get().quote();
+        }
+
+        @Override
+        public BtcPerpetualMarketSnapshot getBtcPerpetualMarketSnapshot()
+        {
+            return market.get();
+        }
+
+        private static BtcPerpetualMarketSnapshot snapshot(
+            BigDecimal bid,
+            BigDecimal ask
+        )
+        {
+            BigDecimal fairPrice = bid.add(ask)
+                .divide(BigDecimal.valueOf(2));
+            return new BtcPerpetualMarketSnapshot(
+                fairPrice,
+                NOW,
+                bid,
+                ask,
+                NOW,
+                fairPrice,
+                fairPrice,
+                BigDecimal.ZERO,
+                NOW.plusSeconds(3600),
+                NOW
+            );
+        }
+    }
+
+    static final class StubFundingRateSource
+        implements BinanceFundingRateSource
+    {
+        private final AtomicReference<List<BinanceFundingRate>> response =
+            new AtomicReference<>(List.of());
+
+        void respondWith(BinanceFundingRate fundingRate)
+        {
+            response.set(List.of(fundingRate));
+        }
+
+        @Override
+        public List<BinanceFundingRate> getBtcFundingRates(
+            Instant startTime,
+            Instant endTime,
+            int limit
+        )
+        {
+            return response.get();
         }
     }
 }

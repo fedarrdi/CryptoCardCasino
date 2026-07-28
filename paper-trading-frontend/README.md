@@ -5,12 +5,12 @@ includes:
 
 - MetaMask wallet login with session restoration
 - A persistent $10,000 paper account with server-authoritative balance, equity,
-  available margin, and realized/unrealized PnL
+  available margin, maintenance margin, fees, funding, and gross/net PnL
 - Cross-margin BTC market positions in either direction with 1–100× leverage
 - Optional stop-loss and take-profit controls that can also be edited while a
   position is open
-- An executable-quote PnL preview before a manual market close, plus open and
-  closed trade views
+- Server-priced opening and executable-close previews with liquidation,
+  bankruptcy, break-even, maintenance-margin, fee, funding, and net-PnL detail
 - A responsive BTC/USDT candlestick chart with selectable 1h, 2h, 4h, 6h,
   8h, 12h, 1d, 3d, 1w, and 1M timeframes, built with TradingView Lightweight
   Charts 5.2
@@ -27,13 +27,25 @@ The workspace polls the authoritative portfolio every four seconds:
 GET /api/paper-trading/portfolio?closedTradeLimit=50
 ```
 
-This keeps account values and open positions marked to the current executable
-quote and makes server-triggered stop-loss or take-profit closures appear
-without a page reload.
+This keeps account values and open positions marked to Binance's BTCUSDT
+USDⓈ-M perpetual mark price and makes server-triggered stop-loss, take-profit,
+or liquidation closures appear without a page reload. The portfolio exposes
+last price for trade/SL/TP behavior, mark price for unrealized PnL and
+liquidation, and index price as the fair-value reference.
 
 All trading controls are explicit: the order type is fixed to `MARKET`, margin
 mode is fixed to `CROSS`, direction is `LONG` or `SHORT`, and leverage must be
-between 1× and 100×. Positions are opened with:
+between 1× and 100×. Before submit, the UI debounces and cancels stale requests
+to obtain an authoritative preview:
+
+```text
+POST /api/paper-trading/positions/preview
+```
+
+The submit button remains locked unless the preview matches every current order
+input and is still within its short monotonic client-side lifetime. The backend
+reprices and revalidates the order again when it is opened. Positions are
+opened with:
 
 ```text
 POST /api/paper-trading/positions
@@ -97,12 +109,13 @@ The frontend loads the initial chart with:
 GET /api/paper-trading/btc-candles?interval=1h
 ```
 
-The authenticated response contains ordered BTC/USDT candles for the requested
-timeframe:
+The authenticated response contains ordered Binance USDⓈ-M BTCUSDT perpetual
+candles for the requested timeframe:
 
 ```json
 {
   "symbol": "BTCUSDT",
+  "productType": "USD_M_PERPETUAL",
   "interval": "1h",
   "hasMore": true,
   "nextBefore": 1785106800,
@@ -145,10 +158,12 @@ After history is loaded, the chart connects to the matching interval stream:
 /ws/market-data/btcusdt/1h
 ```
 
-Each message contains one candle plus `symbol`, `interval`, and `closed`.
-Messages update the current bar or append the next bar. The socket opens while
-history loads, and its messages are buffered by timestamp until that history is
-on the chart. This avoids losing a candle at the REST/WebSocket handoff.
+Each message contains one candle plus `symbol`, `productType`, `interval`, and
+`closed`. The frontend requires `productType` to be `USD_M_PERPETUAL` before it
+accepts history or a live update. Messages update the current bar or append the
+next bar. The socket opens while history loads, and its messages are buffered
+by timestamp until that history is on the chart. This avoids losing a candle at
+the REST/WebSocket handoff.
 
 If the socket closes, the frontend reconnects with a capped exponential delay.
 Every reconnect also reloads the authoritative history before applying its

@@ -9,7 +9,8 @@ import com.raretable.casino.paper_trading.price.BtcQuote;
 sealed interface BinanceStreamEvent
     permits BinanceCandleStreamEvent,
         BinanceTradeStreamEvent,
-        BinanceBookTickerStreamEvent
+        BinanceBookTickerStreamEvent,
+        BinanceMarkPriceStreamEvent
 {
 }
 
@@ -18,12 +19,31 @@ record BinanceCandleStreamEvent(LiveBtcCandle candle)
 {
 }
 
-record BinanceTradeStreamEvent(BigDecimal price, Instant observedAt)
+record BinanceTradeStreamEvent(
+    long aggregateTradeId,
+    BigDecimal price,
+    Instant observedAt
+)
     implements BinanceStreamEvent
 {
 }
 
-record BinanceBookTickerStreamEvent(BtcQuote quote)
+record BinanceBookTickerStreamEvent(
+    long updateId,
+    BtcQuote quote,
+    Instant observedAt
+)
+    implements BinanceStreamEvent
+{
+}
+
+record BinanceMarkPriceStreamEvent(
+    BigDecimal markPrice,
+    BigDecimal indexPrice,
+    BigDecimal fundingRate,
+    Instant nextFundingTime,
+    Instant observedAt
+)
     implements BinanceStreamEvent
 {
 }

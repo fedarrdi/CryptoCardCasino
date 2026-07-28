@@ -227,7 +227,7 @@ function App() {
                   <span className="source-icon" aria-hidden="true">B</span>
                   <div>
                     <small>Market source</small>
-                    <strong>Binance Spot</strong>
+                    <strong>Binance USDⓈ-M Futures</strong>
                   </div>
                   <span className="source-status">Stored history</span>
                 </div>

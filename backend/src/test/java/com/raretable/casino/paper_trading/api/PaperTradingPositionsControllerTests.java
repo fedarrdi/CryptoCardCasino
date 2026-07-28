@@ -1,4 +1,4 @@
-package com.raretable.casino.paper_trading.api;
+    package com.raretable.casino.paper_trading.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -35,6 +35,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.raretable.casino.paper_trading.trading.PaperTradingOperations;
+import com.raretable.casino.paper_trading.trading.AccountRiskState;
 import com.raretable.casino.paper_trading.trading.TradeSide;
 import com.raretable.casino.security.ApiAccessDeniedHandler;
 import com.raretable.casino.security.ApiAuthenticationEntryPoint;
@@ -227,6 +228,56 @@ class PaperTradingPositionsControllerTests
     }
 
     @Test
+    void previewsTheExactAuthenticatedOrderIntent() throws Exception
+    {
+        MockHttpSession session = authenticatedSession();
+        CsrfHeader csrf = csrf(session);
+
+        mockMvc.perform(post("/api/paper-trading/positions/preview")
+                .session(session)
+                .header(csrf.name(), csrf.value())
+                .header(
+                    PaperTradingPositionsController.EXPECTED_USER_HEADER,
+                    USER_ID
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "side": "SHORT",
+                      "leverage": 25,
+                      "marginUsd": 400,
+                      "stopLoss": 110,
+                      "takeProfit": 90
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.entryFee").value(0.4))
+            .andExpect(jsonPath("$.lowerBankruptcyPrice").value(1))
+            .andExpect(
+                jsonPath("$.estimatedLowerLiquidationPrice").value(5)
+            )
+            .andExpect(jsonPath("$.takerFeeRate").value(0.0004))
+            .andExpect(jsonPath("$.liquidationFeeRate").value(0.0125))
+            .andExpect(jsonPath("$.liquidationMode").value("FULL"))
+            .andExpect(
+                jsonPath("$.negativeBalancePolicy").value("FLOOR_ZERO")
+            )
+            .andExpect(jsonPath("$.stopTriggerPriceType").value("LAST"))
+            .andExpect(
+                jsonPath("$.ruleVersion")
+                    .value("RARETABLE_BTCUSDT_V1")
+            );
+
+        assertEquals(USER_ID, tradingService.userId);
+        assertEquals(TradeSide.SHORT, tradingService.previewRequest.side());
+        assertEquals(25, tradingService.previewRequest.leverage());
+        assertEquals(
+            new BigDecimal("400"),
+            tradingService.previewRequest.marginUsd()
+        );
+    }
+
+    @Test
     void rejectsOrdersOutsideTheSupportedLeverageRange() throws Exception
     {
         MockHttpSession session = authenticatedSession();
@@ -299,8 +350,17 @@ class PaperTradingPositionsControllerTests
             USER_ID,
             new TradingQuoteResponse(
                 "BTCUSDT",
+                "USD_M_PERPETUAL",
                 new BigDecimal("99.00000000"),
-                new BigDecimal("100.00000000")
+                new BigDecimal("100.00000000"),
+                new BigDecimal("99.50000000"),
+                new BigDecimal("99.60000000"),
+                new BigDecimal("99.55000000"),
+                new BigDecimal("0.00010000"),
+                NOW.plusSeconds(3600),
+                NOW,
+                NOW,
+                NOW
             ),
             new TradingAccountResponse(
                 balance,
@@ -308,10 +368,46 @@ class PaperTradingPositionsControllerTests
                 balance,
                 zero,
                 zero,
-                balance
+                zero,
+                zero,
+                balance,
+                null,
+                AccountRiskState.NO_POSITIONS,
+                null,
+                null
             ),
             List.of(),
             List.of()
+        );
+    }
+
+    private static PaperPositionPreviewResponse preview()
+    {
+        return new PaperPositionPreviewResponse(
+            new BigDecimal("100"),
+            new BigDecimal("1000"),
+            new BigDecimal("10"),
+            new BigDecimal("0.4"),
+            new BigDecimal("0.4"),
+            new BigDecimal("100.08"),
+            new BigDecimal("1"),
+            new BigDecimal("5"),
+            new BigDecimal("1"),
+            null,
+            new BigDecimal("5"),
+            null,
+            new BigDecimal("4"),
+            new BigDecimal("0.004"),
+            new BigDecimal("0.04"),
+            new BigDecimal("8999.2"),
+            new BigDecimal("8999"),
+            new BigDecimal("0.0004"),
+            new BigDecimal("0.0125"),
+            "FULL",
+            "FLOOR_ZERO",
+            "LAST",
+            "RARETABLE_BTCUSDT_V1",
+            NOW
         );
     }
 
@@ -373,6 +469,7 @@ class PaperTradingPositionsControllerTests
         private UUID positionId;
         private int closedTradeLimit;
         private OpenPositionRequest openRequest;
+        private PreviewPositionRequest previewRequest;
         private UpdateRiskControlsRequest riskRequest;
         private int calls;
 
@@ -383,6 +480,7 @@ class PaperTradingPositionsControllerTests
             positionId = null;
             closedTradeLimit = 0;
             openRequest = null;
+            previewRequest = null;
             riskRequest = null;
             calls = 0;
         }
@@ -409,6 +507,18 @@ class PaperTradingPositionsControllerTests
             userId = requestedUserId;
             openRequest = request;
             return response;
+        }
+
+        @Override
+        public PaperPositionPreviewResponse previewPosition(
+            UUID requestedUserId,
+            PreviewPositionRequest request
+        )
+        {
+            calls++;
+            userId = requestedUserId;
+            previewRequest = request;
+            return preview();
         }
 
         @Override
@@ -440,6 +550,15 @@ class PaperTradingPositionsControllerTests
         @Override
         public void processRiskControls(
             BigDecimal observedTradePrice,
+            Instant observedAt
+        )
+        {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void processLiquidations(
+            BigDecimal observedMarkPrice,
             Instant observedAt
         )
         {

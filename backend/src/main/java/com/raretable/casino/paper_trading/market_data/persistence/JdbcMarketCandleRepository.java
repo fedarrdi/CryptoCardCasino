@@ -14,12 +14,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class JdbcMarketCandleRepository implements MarketCandleRepository
 {
+    static final String PRODUCT_TYPE = "USD_M_PERPETUAL";
+
     private static final String UPSERT_SQL = """
         INSERT INTO market_candles
-            (symbol, candle_interval, open_time, open, high, low, close, volume)
+            (product_type, symbol, candle_interval, open_time,
+             open, high, low, close, volume)
         VALUES
-            (:symbol, :interval, :openTime, :open, :high, :low, :close, :volume)
-        ON CONFLICT (symbol, candle_interval, open_time)
+            (:productType, :symbol, :interval, :openTime,
+             :open, :high, :low, :close, :volume)
+        ON CONFLICT (product_type, symbol, candle_interval, open_time)
         DO UPDATE SET
             open = EXCLUDED.open,
             high = EXCLUDED.high,
@@ -46,10 +50,13 @@ public class JdbcMarketCandleRepository implements MarketCandleRepository
         return jdbcClient.sql("""
                 SELECT open_time
                 FROM market_candles
-                WHERE symbol = :symbol AND candle_interval = :interval
+                WHERE product_type = :productType
+                  AND symbol = :symbol
+                  AND candle_interval = :interval
                 ORDER BY open_time DESC
                 LIMIT 1
                 """)
+            .param("productType", PRODUCT_TYPE)
             .param("symbol", symbol)
             .param("interval", interval)
             .query((resultSet, rowNumber) ->
@@ -73,12 +80,15 @@ public class JdbcMarketCandleRepository implements MarketCandleRepository
                     SELECT symbol, candle_interval, open_time,
                            open, high, low, close, volume
                     FROM market_candles
-                    WHERE symbol = :symbol AND candle_interval = :interval
+                    WHERE product_type = :productType
+                      AND symbol = :symbol
+                      AND candle_interval = :interval
                     ORDER BY open_time DESC
                     LIMIT :limit
                 ) latest
                 ORDER BY open_time ASC
                 """)
+            .param("productType", PRODUCT_TYPE)
             .param("symbol", symbol)
             .param("interval", interval)
             .param("limit", limit)
@@ -111,7 +121,8 @@ public class JdbcMarketCandleRepository implements MarketCandleRepository
                     SELECT symbol, candle_interval, open_time,
                            open, high, low, close, volume
                     FROM market_candles
-                    WHERE symbol = :symbol
+                    WHERE product_type = :productType
+                      AND symbol = :symbol
                       AND candle_interval = :interval
                       AND open_time < :before
                     ORDER BY open_time DESC
@@ -119,6 +130,7 @@ public class JdbcMarketCandleRepository implements MarketCandleRepository
                 ) preceding
                 ORDER BY open_time ASC
                 """)
+            .param("productType", PRODUCT_TYPE)
             .param("symbol", symbol)
             .param("interval", interval)
             .param("before", Timestamp.from(before))
@@ -148,6 +160,7 @@ public class JdbcMarketCandleRepository implements MarketCandleRepository
         @SuppressWarnings("unchecked")
         Map<String, ?>[] parameters = candles.stream()
             .map(candle -> Map.<String, Object>of(
+                "productType", PRODUCT_TYPE,
                 "symbol", candle.symbol(),
                 "interval", candle.interval(),
                 "openTime", Timestamp.from(candle.openTime()),

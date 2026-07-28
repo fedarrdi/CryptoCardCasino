@@ -73,12 +73,12 @@ class PaperTradingMathTests
     void riskControlDirectionsAndBoundariesAreExplicit()
     {
         TradeSide.LONG.validateRiskControls(
-            QUOTE,
+            new BigDecimal("99.5"),
             new BigDecimal("90"),
             new BigDecimal("110")
         );
         TradeSide.SHORT.validateRiskControls(
-            QUOTE,
+            new BigDecimal("99.5"),
             new BigDecimal("110"),
             new BigDecimal("90")
         );
@@ -86,23 +86,23 @@ class PaperTradingMathTests
         assertThrows(
             IllegalArgumentException.class,
             () -> TradeSide.LONG.validateRiskControls(
-                QUOTE,
-                new BigDecimal("99"),
+                new BigDecimal("99.5"),
+                new BigDecimal("99.5"),
                 null
             )
         );
         assertThrows(
             IllegalArgumentException.class,
             () -> TradeSide.SHORT.validateRiskControls(
-                QUOTE,
+                new BigDecimal("99.5"),
                 null,
-                new BigDecimal("99")
+                new BigDecimal("99.5")
             )
         );
         assertThrows(
             IllegalArgumentException.class,
             () -> TradeSide.LONG.validateRiskControls(
-                QUOTE,
+                new BigDecimal("99.5"),
                 null,
                 new BigDecimal("99.5")
             )
@@ -110,7 +110,7 @@ class PaperTradingMathTests
         assertThrows(
             IllegalArgumentException.class,
             () -> TradeSide.SHORT.validateRiskControls(
-                QUOTE,
+                new BigDecimal("99.5"),
                 new BigDecimal("99.5"),
                 null
             )

@@ -324,6 +324,7 @@ class MarketDataWebSocketHandlerTests
     {
         return new LiveBtcCandle(
             "BTCUSDT",
+            "USD_M_PERPETUAL",
             interval,
             time,
             new BigDecimal("65000.10"),

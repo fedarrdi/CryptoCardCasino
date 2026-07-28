@@ -39,7 +39,7 @@ final class BinanceRestKlineClient implements BinanceKlineSource
 
         JsonNode response = restClient.get()
             .uri(uriBuilder -> uriBuilder
-                .path("/api/v3/klines")
+                .path("/fapi/v1/klines")
                 .queryParam("symbol", SYMBOL)
                 .queryParam("interval", interval.value())
                 .queryParam("startTime", startTime.toEpochMilli())

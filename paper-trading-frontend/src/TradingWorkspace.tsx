@@ -12,20 +12,25 @@ import {
   closePaperPosition,
   getPaperTradingPortfolio,
   openPaperPosition,
+  previewPaperPosition,
   SessionUserMismatchError,
   updatePaperPositionRiskControls,
-  type OpenPaperPositionRequest,
   type ClosedPaperTrade,
+  type OpenPaperPositionRequest,
   type OpenPaperPosition,
   type PaperTradingAccount,
   type PaperTradingPortfolio,
+  type PaperPositionPreview,
   type PaperTradingQuote,
   type PositionSide,
+  type PreviewPaperPositionRequest,
   type UpdateRiskControlsRequest,
 } from './api.ts'
 import { BtcChart } from './BtcChart.tsx'
 
 const PORTFOLIO_POLL_INTERVAL_MS = 4_000
+const ORDER_PREVIEW_DEBOUNCE_MS = 300
+const ORDER_PREVIEW_MAX_AGE_MS = 5_000
 
 const usdFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -57,6 +62,11 @@ const percentFormatter = new Intl.NumberFormat('en-US', {
   signDisplay: 'exceptZero',
 })
 
+const ratioFormatter = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
 const timeFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',
   day: '2-digit',
@@ -73,6 +83,11 @@ type TradingWorkspaceProps = {
 type SnapshotMutation = (
   signal: AbortSignal,
 ) => Promise<PaperTradingPortfolio>
+
+type PreviewLoader = (
+  request: PreviewPaperPositionRequest,
+  signal: AbortSignal,
+) => Promise<PaperPositionPreview>
 
 function requestErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -98,6 +113,28 @@ function formatOptionalPrice(value: number | null): string {
   return value === null ? 'Not set' : `$${priceFormatter.format(value)}`
 }
 
+function formatPriceBoundaries(
+  lower: number | null,
+  upper: number | null,
+): string {
+  const boundaries = [
+    lower === null ? null : `Lower $${priceFormatter.format(lower)}`,
+    upper === null ? null : `Upper $${priceFormatter.format(upper)}`,
+  ].filter((value): value is string => value !== null)
+
+  return boundaries.length === 0
+    ? 'No current boundary'
+    : boundaries.join(' · ')
+}
+
+function formatRate(value: number): string {
+  return `${percentFormatter.format(value * 100)}%`
+}
+
+function formatRiskState(value: string): string {
+  return value.replaceAll('_', ' ')
+}
+
 function parseOptionalPrice(value: string): number | null | undefined {
   if (value.trim() === '') {
     return null
@@ -114,20 +151,20 @@ function validateRiskControls(
   takeProfit: number | null,
 ): string | null {
   if (side === 'LONG') {
-    if (stopLoss !== null && stopLoss >= quote.bidPrice) {
-      return 'A long stop loss must be below the current bid.'
+    if (stopLoss !== null && stopLoss >= quote.lastPrice) {
+      return 'A long stop loss must be below the current last price.'
     }
 
-    if (takeProfit !== null && takeProfit <= quote.askPrice) {
-      return 'A long take profit must be above the current ask.'
+    if (takeProfit !== null && takeProfit <= quote.lastPrice) {
+      return 'A long take profit must be above the current last price.'
     }
   } else {
-    if (stopLoss !== null && stopLoss <= quote.askPrice) {
-      return 'A short stop loss must be above the current ask.'
+    if (stopLoss !== null && stopLoss <= quote.lastPrice) {
+      return 'A short stop loss must be above the current last price.'
     }
 
-    if (takeProfit !== null && takeProfit >= quote.bidPrice) {
-      return 'A short take profit must be below the current bid.'
+    if (takeProfit !== null && takeProfit >= quote.lastPrice) {
+      return 'A short take profit must be below the current last price.'
     }
   }
 
@@ -158,6 +195,14 @@ function AccountSummary({
   lastUpdatedAt: Date
 }) {
   const balanceChange = account.balance - account.initialBalance
+  const liquidationRange = [
+    account.estimatedLowerLiquidationPrice === null
+      ? null
+      : `Lower ${formatOptionalPrice(account.estimatedLowerLiquidationPrice)}`,
+    account.estimatedUpperLiquidationPrice === null
+      ? null
+      : `Upper ${formatOptionalPrice(account.estimatedUpperLiquidationPrice)}`,
+  ].filter((value): value is string => value !== null)
 
   return (
     <section className="account-summary" aria-label="Paper account summary">
@@ -168,12 +213,22 @@ function AccountSummary({
           <span className="equity-caption">Total equity</span>
         </div>
         <div className="quote-block">
-          <span className="live-indicator"><i /> Live quote</span>
-          <strong>{quote.symbol}</strong>
-          <span>
+          <span className="live-indicator"><i /> Perpetual market live</span>
+          <strong>{quote.symbol} · USDⓈ-M</strong>
+          <div className="perpetual-prices">
+            <span><small>Last</small>${priceFormatter.format(quote.lastPrice)}</span>
+            <span><small>Mark</small>${priceFormatter.format(quote.markPrice)}</span>
+            <span><small>Index</small>${priceFormatter.format(quote.indexPrice)}</span>
+          </div>
+          <span className="book-quote">
             Bid ${priceFormatter.format(quote.bidPrice)}
             <i />
             Ask ${priceFormatter.format(quote.askPrice)}
+          </span>
+          <span className="funding-quote">
+            Funding {formatRate(quote.fundingRate)}
+            <i />
+            Next {timeFormatter.format(new Date(quote.nextFundingAt))}
           </span>
           <small>Updated {timeFormatter.format(lastUpdatedAt)}</small>
         </div>
@@ -195,21 +250,46 @@ function AccountSummary({
           <small>Shared across all positions</small>
         </div>
         <div>
-          <span>Used margin</span>
-          <strong>{usdFormatter.format(account.usedMargin)}</strong>
-          <small>
-            Cross margin ·{' '}
-            {account.equity === 0
-              ? '—'
-              : `${((account.usedMargin / account.equity) * 100).toFixed(2)}% of equity`}
-          </small>
+          <span>Initial margin</span>
+          <strong>{usdFormatter.format(account.initialMargin)}</strong>
+          <small>Cross collateral currently committed</small>
         </div>
         <div>
-          <span>Unrealized PnL</span>
-          <PnlValue value={account.unrealizedPnl}>
-            <strong>{usdFormatter.format(account.unrealizedPnl)}</strong>
+          <span>Gross unrealized PnL</span>
+          <PnlValue value={account.grossUnrealizedPnl}>
+            <strong>{usdFormatter.format(account.grossUnrealizedPnl)}</strong>
           </PnlValue>
-          <small>Marked by the server</small>
+          <small>Calculated from mark price</small>
+        </div>
+        <div>
+          <span>Maintenance margin</span>
+          <strong>{usdFormatter.format(account.maintenanceMargin)}</strong>
+          <small>Required by the active risk tier</small>
+        </div>
+        <div>
+          <span>Closing fee reserve</span>
+          <strong>{usdFormatter.format(account.estimatedClosingFee)}</strong>
+          <small>Estimated taker fees to close</small>
+        </div>
+        <div>
+          <span>Account MMR</span>
+          <strong>
+            {account.maintenanceMarginRatioPercent === null
+              ? '—'
+              : `${ratioFormatter.format(account.maintenanceMarginRatioPercent)}%`}
+          </strong>
+          <span className={`risk-state risk-${account.riskState.toLowerCase()}`}>
+            {formatRiskState(account.riskState)}
+          </span>
+        </div>
+        <div>
+          <span>Estimated liquidation</span>
+          <strong>
+            {liquidationRange.length === 0
+              ? 'No current boundary'
+              : liquidationRange.join(' · ')}
+          </strong>
+          <small>Account-level cross-margin estimate</small>
         </div>
       </div>
     </section>
@@ -218,9 +298,11 @@ function AccountSummary({
 
 function OrderTicket({
   portfolio,
+  onPreview,
   onSubmit,
 }: {
   portfolio: PaperTradingPortfolio
+  onPreview: PreviewLoader
   onSubmit: (
     request: OpenPaperPositionRequest,
   ) => Promise<PaperTradingPortfolio>
@@ -232,20 +314,114 @@ function OrderTicket({
   const [takeProfit, setTakeProfit] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewState, setPreviewState] = useState<{
+    fingerprint: string
+    value: PaperPositionPreview
+    expiresAtMonotonic: number
+  } | null>(null)
   const retryOrderRef = useRef<{
     fingerprint: string
     clientOrderId: string
   } | null>(null)
 
-  const executionPrice =
-    side === 'LONG'
-      ? portfolio.quote.askPrice
-      : portfolio.quote.bidPrice
   const parsedMargin = Number(margin)
   const validMargin =
     margin.trim() !== '' && Number.isFinite(parsedMargin) && parsedMargin > 0
-  const notional = validMargin ? parsedMargin * leverage : 0
-  const quantity = validMargin ? notional / executionPrice : 0
+  const parsedStopLoss = parseOptionalPrice(stopLoss)
+  const parsedTakeProfit = parseOptionalPrice(takeProfit)
+  const riskError =
+    parsedStopLoss === undefined || parsedTakeProfit === undefined
+      ? 'Stop loss and take profit must be positive prices when set.'
+      : validateRiskControls(
+          side,
+          portfolio.quote,
+          parsedStopLoss,
+          parsedTakeProfit,
+        )
+  const previewRequest: PreviewPaperPositionRequest | null =
+    validMargin &&
+    parsedStopLoss !== undefined &&
+    parsedTakeProfit !== undefined &&
+    riskError === null
+      ? {
+          side,
+          leverage,
+          marginUsd: parsedMargin,
+          stopLoss: parsedStopLoss,
+          takeProfit: parsedTakeProfit,
+        }
+      : null
+  const previewFingerprint =
+    previewRequest === null
+      ? null
+      : JSON.stringify([
+          previewRequest,
+          portfolio.quote.bookUpdatedAt,
+          portfolio.quote.lastPriceUpdatedAt,
+          portfolio.quote.markPriceUpdatedAt,
+        ])
+  const previewReady =
+    previewFingerprint !== null &&
+    previewState?.fingerprint === previewFingerprint &&
+    window.performance.now() < previewState.expiresAtMonotonic
+  const preview = previewReady ? previewState.value : null
+
+  useEffect(() => {
+    setPreviewState(null)
+    setPreviewError(null)
+
+    if (previewRequest === null || previewFingerprint === null) {
+      setPreviewLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    let expirationTimer: number | null = null
+    setPreviewLoading(true)
+
+    const debounceTimer = window.setTimeout(() => {
+      void onPreview(previewRequest, controller.signal)
+        .then((value) => {
+          if (controller.signal.aborted) {
+            return
+          }
+
+          const expiresAtMonotonic =
+            window.performance.now() + ORDER_PREVIEW_MAX_AGE_MS
+
+          setPreviewState({
+            fingerprint: previewFingerprint,
+            value,
+            expiresAtMonotonic,
+          })
+          setPreviewLoading(false)
+          expirationTimer = window.setTimeout(() => {
+            setPreviewState((current) =>
+              current?.fingerprint === previewFingerprint ? null : current,
+            )
+            setPreviewError('Order preview expired as prices changed.')
+          }, ORDER_PREVIEW_MAX_AGE_MS)
+        })
+        .catch((requestError) => {
+          if (controller.signal.aborted) {
+            return
+          }
+
+          setPreviewLoading(false)
+          setPreviewError(requestErrorMessage(requestError))
+        })
+    }, ORDER_PREVIEW_DEBOUNCE_MS)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(debounceTimer)
+      if (expirationTimer !== null) {
+        window.clearTimeout(expirationTimer)
+      }
+    }
+  }, [onPreview, previewFingerprint])
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -255,14 +431,6 @@ function OrderTicket({
       setError('Enter a margin amount greater than $0.')
       return
     }
-
-    if (parsedMargin > portfolio.account.availableMargin) {
-      setError('Margin cannot exceed your available cross margin.')
-      return
-    }
-
-    const parsedStopLoss = parseOptionalPrice(stopLoss)
-    const parsedTakeProfit = parseOptionalPrice(takeProfit)
 
     if (parsedStopLoss === undefined || parsedTakeProfit === undefined) {
       setError('Stop loss and take profit must be positive prices when set.')
@@ -281,14 +449,23 @@ function OrderTicket({
       return
     }
 
-    setPending(true)
-    const orderIntent = {
-      side,
-      leverage,
-      marginUsd: parsedMargin,
-      stopLoss: parsedStopLoss,
-      takeProfit: parsedTakeProfit,
+    if (
+      previewRequest === null ||
+      previewFingerprint === null ||
+      previewState?.fingerprint !== previewFingerprint ||
+      window.performance.now() >= previewState.expiresAtMonotonic
+    ) {
+      setError('Wait for a fresh server order preview before submitting.')
+      return
     }
+
+    if (parsedMargin > previewState.value.maxOrderMargin) {
+      setError('Margin exceeds the server-calculated maximum order margin.')
+      return
+    }
+
+    setPending(true)
+    const orderIntent = previewRequest
     const fingerprint = JSON.stringify(orderIntent)
     const clientOrderId =
       retryOrderRef.current?.fingerprint === fingerprint
@@ -316,10 +493,10 @@ function OrderTicket({
     <aside className="order-ticket">
       <div className="ticket-heading">
         <div>
-          <span className="panel-label">Order ticket</span>
+        <span className="panel-label">Order ticket</span>
           <h2>Open position</h2>
         </div>
-        <span className="market-chip">BTC</span>
+        <span className="market-chip">BTC perpetual</span>
       </div>
 
       <div className="fixed-order-settings" aria-label="Fixed order settings">
@@ -358,14 +535,9 @@ function OrderTicket({
             Margin
             <button
               type="button"
-              onClick={() => {
-                const maxCents = Math.floor(
-                  portfolio.account.availableMargin * 100,
-                ) / 100
-                setMargin(Math.max(0, maxCents).toFixed(2))
-              }}
+              disabled
             >
-              Max {usdFormatter.format(portfolio.account.availableMargin)}
+              Available {usdFormatter.format(portfolio.account.availableMargin)}
             </button>
           </span>
           <div className="input-with-affix">
@@ -439,9 +611,65 @@ function OrderTicket({
         </div>
 
         <div className="order-preview">
-          <span><small>Market {side === 'LONG' ? 'ask' : 'bid'}</small><strong>${priceFormatter.format(executionPrice)}</strong></span>
-          <span><small>Position value</small><strong>{compactUsdFormatter.format(notional)}</strong></span>
-          <span><small>Estimated quantity</small><strong>{quantityFormatter.format(quantity)} BTC</strong></span>
+          {preview === null ? (
+            <div className="order-preview-state" aria-live="polite">
+              {previewLoading
+                ? 'Calculating fees, maintenance margin, and liquidation…'
+                : previewError ??
+                  riskError ??
+                  'Enter a valid margin amount for an authoritative preview.'}
+            </div>
+          ) : (
+            <>
+              <span><small>Market {side === 'LONG' ? 'ask' : 'bid'}</small><strong>${priceFormatter.format(preview.entryPrice)}</strong></span>
+              <span><small>Position value</small><strong>{compactUsdFormatter.format(preview.notionalUsd)}</strong></span>
+              <span><small>Estimated quantity</small><strong>{quantityFormatter.format(preview.quantity)} BTC</strong></span>
+              <span><small>Entry taker fee</small><strong>{usdFormatter.format(preview.entryFee)}</strong></span>
+              <span><small>Closing fee reserve</small><strong>{usdFormatter.format(preview.estimatedExitFee)}</strong></span>
+              <span><small>Break-even</small><strong>${priceFormatter.format(preview.breakEvenPrice)}</strong></span>
+              <span>
+                <small>Account bankruptcy boundaries</small>
+                <strong>
+                  {formatPriceBoundaries(
+                    preview.lowerBankruptcyPrice,
+                    preview.upperBankruptcyPrice,
+                  )}
+                </strong>
+              </span>
+              <span>
+                <small>Account liquidation boundaries</small>
+                <strong>
+                  {formatPriceBoundaries(
+                    preview.estimatedLowerLiquidationPrice,
+                    preview.estimatedUpperLiquidationPrice,
+                  )}
+                </strong>
+              </span>
+              <span>
+                <small>Post-order account maintenance</small>
+                <strong>
+                  {usdFormatter.format(preview.maintenanceMargin)}
+                  {' · '}
+                  {formatRate(preview.maintenanceMarginRate)}
+                </strong>
+              </span>
+              <span><small>Post-order MMR</small><strong>{ratioFormatter.format(preview.postOrderMaintenanceMarginRatioPercent)}%</strong></span>
+              <span><small>Available after</small><strong>{usdFormatter.format(preview.availableMarginAfter)}</strong></span>
+              <span><small>Maximum order margin</small><strong>{usdFormatter.format(preview.maxOrderMargin)}</strong></span>
+              <span><small>Market taker fee</small><strong>{formatRate(preview.takerFeeRate)} per side</strong></span>
+              <span><small>Liquidation fee</small><strong>{formatRate(preview.liquidationFeeRate)}</strong></span>
+              <span>
+                <small>Liquidation policy</small>
+                <strong>
+                  {formatRiskState(preview.liquidationMode)}
+                  {' · '}
+                  {formatRiskState(preview.negativeBalancePolicy)}
+                </strong>
+              </span>
+              <span><small>SL / TP trigger</small><strong>{formatRiskState(preview.stopTriggerPriceType)} price</strong></span>
+              <span><small>Risk rules</small><strong>{preview.ruleVersion}</strong></span>
+            </>
+          )}
         </div>
 
         {error !== null && (
@@ -451,9 +679,13 @@ function OrderTicket({
         <button
           className={`submit-order ${side === 'LONG' ? 'long-order' : 'short-order'}`}
           type="submit"
-          disabled={pending}
+          disabled={pending || !previewReady}
         >
-          {pending ? 'Opening market position…' : `${side === 'LONG' ? 'Buy / Long' : 'Sell / Short'} ${leverage}×`}
+          {pending
+            ? 'Opening market position…'
+            : previewLoading
+              ? 'Calculating order risk…'
+              : `${side === 'LONG' ? 'Buy / Long' : 'Sell / Short'} ${leverage}×`}
         </button>
         <p className="ticket-disclaimer">
           Simulated execution only. No funds or wallet transaction required.
@@ -642,9 +874,16 @@ function OpenPositions({
                   <div><dt>Entry</dt><dd>${priceFormatter.format(position.entryPrice)}</dd></div>
                   <div><dt>Mark</dt><dd>${priceFormatter.format(position.markPrice)}</dd></div>
                   <div>
-                    <dt>Unrealized PnL</dt>
-                    <dd><PnlValue value={position.unrealizedPnl}>{usdFormatter.format(position.unrealizedPnl)} <small>{percentFormatter.format(position.unrealizedRoePercent)}%</small></PnlValue></dd>
+                    <dt>Gross unrealized</dt>
+                    <dd><PnlValue value={position.grossUnrealizedPnl}>{usdFormatter.format(position.grossUnrealizedPnl)} <small>{percentFormatter.format(position.unrealizedRoePercent)}% ROE</small></PnlValue></dd>
                   </div>
+                  <div><dt>Estimated net PnL</dt><dd><PnlValue value={position.estimatedNetPnl}>{usdFormatter.format(position.estimatedNetPnl)}</PnlValue></dd></div>
+                  <div><dt>Fees</dt><dd>{usdFormatter.format(position.entryFee + position.estimatedExitFee)}<small>Entry {usdFormatter.format(position.entryFee)} · Exit {usdFormatter.format(position.estimatedExitFee)}</small></dd></div>
+                  <div><dt>Funding PnL</dt><dd><PnlValue value={position.fundingPnl} /></dd></div>
+                  <div><dt>Allocated maintenance</dt><dd>{usdFormatter.format(position.maintenanceMargin)}<small>{formatRate(position.maintenanceMarginRate)} aggregate side-tier rate</small></dd></div>
+                  <div><dt>Break-even</dt><dd>${priceFormatter.format(position.breakEvenPrice)}</dd></div>
+                  <div><dt>Est. liquidation</dt><dd>{formatOptionalPrice(position.estimatedLiquidationPrice)}</dd></div>
+                  <div><dt>Bankruptcy</dt><dd>{formatOptionalPrice(position.bankruptcyPrice)}</dd></div>
                   <div><dt>Stop loss</dt><dd>{formatOptionalPrice(position.stopLoss)}</dd></div>
                   <div><dt>Take profit</dt><dd>{formatOptionalPrice(position.takeProfit)}</dd></div>
                 </dl>
@@ -693,7 +932,6 @@ function OpenPositions({
       {closingPosition !== null && (
         <ClosePreview
           position={closingPosition}
-          quote={portfolio.quote}
           pending={pendingAction === `close:${closingPosition.id}`}
           error={actionError}
           onCancel={() => {
@@ -709,23 +947,17 @@ function OpenPositions({
 
 function ClosePreview({
   position,
-  quote,
   pending,
   error,
   onCancel,
   onConfirm,
 }: {
   position: OpenPaperPosition
-  quote: PaperTradingQuote
   pending: boolean
   error: string | null
   onCancel: () => void
   onConfirm: () => void
 }) {
-  const closePrice =
-    position.side === 'LONG' ? quote.bidPrice : quote.askPrice
-  const estimatedPnl = position.unrealizedPnl
-
   return (
     <div className="close-preview-backdrop" role="presentation">
       <section
@@ -743,18 +975,22 @@ function ClosePreview({
         </header>
 
         <div className="close-pnl-preview">
-          <span>Estimated PnL at current {position.side === 'LONG' ? 'bid' : 'ask'}</span>
-          <PnlValue value={estimatedPnl}>
-            <strong>{usdFormatter.format(estimatedPnl)}</strong>
+          <span>Estimated net PnL at executable {position.side === 'LONG' ? 'bid' : 'ask'}</span>
+          <PnlValue value={position.estimatedCloseNetPnl}>
+            <strong>{usdFormatter.format(position.estimatedCloseNetPnl)}</strong>
           </PnlValue>
-          <small>The server will execute against its latest quote when you confirm.</small>
+          <small>Includes entry fee, estimated closing taker fee, and settled funding.</small>
         </div>
 
         <dl>
           <div><dt>Entry price</dt><dd>${priceFormatter.format(position.entryPrice)}</dd></div>
-          <div><dt>Close quote</dt><dd>${priceFormatter.format(closePrice)}</dd></div>
+          <div><dt>Executable close</dt><dd>${priceFormatter.format(position.estimatedClosePrice)}</dd></div>
           <div><dt>Quantity</dt><dd>{quantityFormatter.format(position.quantity)} BTC</dd></div>
           <div><dt>Position value</dt><dd>{usdFormatter.format(position.notionalUsd)}</dd></div>
+          <div><dt>Gross price PnL</dt><dd><PnlValue value={position.estimatedCloseGrossPnl} /></dd></div>
+          <div><dt>Entry fee paid</dt><dd>-{usdFormatter.format(position.entryFee)}</dd></div>
+          <div><dt>Estimated exit fee</dt><dd>-{usdFormatter.format(position.estimatedExitFee)}</dd></div>
+          <div><dt>Funding PnL</dt><dd><PnlValue value={position.fundingPnl} /></dd></div>
         </dl>
 
         {error !== null && <p className="form-error" role="alert">{error}</p>}
@@ -777,6 +1013,7 @@ const CLOSE_REASON_LABELS: Record<
   USER: 'Manual close',
   STOP_LOSS: 'Stop loss',
   TAKE_PROFIT: 'Take profit',
+  LIQUIDATION: 'Liquidation',
 }
 
 function TradeHistory({ trades }: { trades: ClosedPaperTrade[] }) {
@@ -805,7 +1042,9 @@ function TradeHistory({ trades }: { trades: ClosedPaperTrade[] }) {
                 <th>Entry / Exit</th>
                 <th>Margin / Leverage</th>
                 <th>Close reason</th>
-                <th>Realized PnL</th>
+                <th>Gross PnL</th>
+                <th>Fees / Funding</th>
+                <th>Net PnL</th>
               </tr>
             </thead>
             <tbody>
@@ -827,7 +1066,29 @@ function TradeHistory({ trades }: { trades: ClosedPaperTrade[] }) {
                     {usdFormatter.format(trade.marginUsd)}
                     <small>{trade.leverage}× · Cross</small>
                   </td>
-                  <td>{CLOSE_REASON_LABELS[trade.closeReason]}</td>
+                  <td>
+                    <span className={trade.closeReason === 'LIQUIDATION' ? 'liquidation-reason' : undefined}>
+                      {CLOSE_REASON_LABELS[trade.closeReason]}
+                    </span>
+                  </td>
+                  <td><PnlValue value={trade.grossRealizedPnl} /></td>
+                  <td>
+                    -{usdFormatter.format(
+                      trade.entryFee + trade.exitFee,
+                    )}
+                    <small>
+                      {trade.liquidationFee > 0 && (
+                        <>
+                          Liquidation fee -{usdFormatter.format(trade.liquidationFee)}
+                          {' · '}
+                        </>
+                      )}
+                      Funding{' '}
+                      <PnlValue value={trade.fundingPnl}>
+                        {usdFormatter.format(trade.fundingPnl)}
+                      </PnlValue>
+                    </small>
+                  </td>
                   <td><PnlValue value={trade.realizedPnl} /></td>
                 </tr>
               ))}
@@ -863,6 +1124,28 @@ export function TradingWorkspace({
     setPortfolioError(null)
     setLastUpdatedAt(new Date())
   }, [expectedUserId])
+
+  const loadOrderPreview = useCallback<PreviewLoader>(
+    async (request, signal) => {
+      try {
+        return await previewPaperPosition(
+          request,
+          expectedUserId,
+          signal,
+        )
+      } catch (error) {
+        if (
+          (error instanceof ApiError && error.status === 401) ||
+          error instanceof SessionUserMismatchError
+        ) {
+          onSessionExpired()
+        }
+
+        throw error
+      }
+    },
+    [expectedUserId, onSessionExpired],
+  )
 
   useEffect(() => {
     activeRef.current = true
@@ -1003,6 +1286,8 @@ export function TradingWorkspace({
         <BtcChart
           onSessionExpired={onSessionExpired}
           openPositions={portfolio?.openPositions ?? []}
+          account={portfolio?.account ?? null}
+          quote={portfolio?.quote ?? null}
         />
         {portfolio === null ? (
           <aside className="portfolio-state-card" aria-live="polite">
@@ -1023,6 +1308,7 @@ export function TradingWorkspace({
         ) : (
           <OrderTicket
             portfolio={portfolio}
+            onPreview={loadOrderPreview}
             onSubmit={(request) =>
               runMutation((signal) =>
                 openPaperPosition(request, expectedUserId, signal),

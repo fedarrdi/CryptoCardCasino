@@ -18,6 +18,10 @@ import com.raretable.casino.paper_trading.price.BtcQuote;
 @Component
 final class BinanceWebSocketMessageParser
 {
+    private static final String AGGREGATE_TRADE_STREAM = "btcusdt@aggTrade";
+    private static final String BOOK_TICKER_STREAM = "btcusdt@bookTicker";
+    private static final String MARK_PRICE_STREAM = "btcusdt@markPrice@1s";
+
     private final JsonMapper jsonMapper;
 
     BinanceWebSocketMessageParser(JsonMapper jsonMapper)
@@ -32,16 +36,26 @@ final class BinanceWebSocketMessageParser
             JsonNode root = jsonMapper.readTree(message);
             String stream = text(root, "stream");
             JsonNode event = required(root, "data");
-            if ("btcusdt@aggTrade".equals(stream))
+            if (AGGREGATE_TRADE_STREAM.equals(stream))
             {
                 return parseAggregateTrade(event);
             }
-            if ("btcusdt@bookTicker".equals(stream))
+            if (BOOK_TICKER_STREAM.equals(stream))
             {
                 return parseBookTicker(event);
             }
-            return new BinanceCandleStreamEvent(
-                parseCandle(stream, event)
+            if (MARK_PRICE_STREAM.equals(stream))
+            {
+                return parseMarkPrice(event);
+            }
+            if (stream.startsWith("btcusdt@kline_"))
+            {
+                return new BinanceCandleStreamEvent(
+                    parseCandle(stream, event)
+                );
+            }
+            throw new IllegalArgumentException(
+                "Binance sent an unexpected BTCUSDT perpetual stream"
             );
         }
         catch (JacksonException exception)
@@ -58,6 +72,7 @@ final class BinanceWebSocketMessageParser
         JsonNode event
     )
     {
+        epochMillis(event, "E", "kline event time");
         JsonNode kline = required(event, "k");
         if (!"kline".equals(text(event, "e")))
         {
@@ -107,6 +122,7 @@ final class BinanceWebSocketMessageParser
 
         return new LiveBtcCandle(
             symbol,
+            BtcCandleService.PRODUCT_TYPE,
             interval.value(),
             openTimeMillis / 1_000,
             decimal(kline, "o"),
@@ -120,6 +136,7 @@ final class BinanceWebSocketMessageParser
 
     private static BinanceTradeStreamEvent parseAggregateTrade(JsonNode event)
     {
+        requireUsdMPerpetual(event);
         if (!"aggTrade".equals(text(event, "e"))
             || !BtcCandleService.SYMBOL.equals(text(event, "s")))
         {
@@ -127,33 +144,119 @@ final class BinanceWebSocketMessageParser
                 "Binance sent an unexpected aggregate-trade stream"
             );
         }
-        JsonNode tradeTime = required(event, "T");
-        if (!tradeTime.isIntegralNumber())
-        {
-            throw new IllegalArgumentException(
-                "Binance aggregate-trade time is not an integer"
-            );
-        }
+        epochMillis(event, "E", "aggregate-trade event time");
         return new BinanceTradeStreamEvent(
+            nonNegativeLong(event, "a", "aggregate-trade ID"),
             decimal(event, "p"),
-            Instant.ofEpochMilli(tradeTime.longValue())
+            epochMillis(event, "T", "aggregate-trade time")
         );
     }
 
     private static BinanceBookTickerStreamEvent parseBookTicker(JsonNode event)
     {
-        if (!BtcCandleService.SYMBOL.equals(text(event, "s")))
+        requireUsdMPerpetual(event);
+        if (!"bookTicker".equals(text(event, "e"))
+            || !BtcCandleService.SYMBOL.equals(text(event, "s")))
         {
             throw new IllegalArgumentException(
                 "Binance sent an unexpected book-ticker stream"
             );
         }
+        epochMillis(event, "E", "book-ticker event time");
         return new BinanceBookTickerStreamEvent(
+            nonNegativeLong(event, "u", "book-ticker update ID"),
             new BtcQuote(
                 decimal(event, "b"),
                 decimal(event, "a")
+            ),
+            epochMillis(event, "T", "book-ticker transaction time")
+        );
+    }
+
+    private static BinanceMarkPriceStreamEvent parseMarkPrice(JsonNode event)
+    {
+        requireUsdMPerpetual(event);
+        if (!"markPriceUpdate".equals(text(event, "e"))
+            || !BtcCandleService.SYMBOL.equals(text(event, "s")))
+        {
+            throw new IllegalArgumentException(
+                "Binance sent an unexpected mark-price stream"
+            );
+        }
+        return new BinanceMarkPriceStreamEvent(
+            decimal(event, "p"),
+            decimal(event, "i"),
+            decimal(event, "r"),
+            epochMillis(
+                event,
+                "T",
+                "next funding time"
+            ),
+            epochMillis(
+                event,
+                "E",
+                "mark-price event time"
             )
         );
+    }
+
+    private static void requireUsdMPerpetual(JsonNode event)
+    {
+        long symbolType = integralLong(event, "st", "symbol type");
+        if (symbolType != 1)
+        {
+            throw new IllegalArgumentException(
+                "Binance stream is not USD-M perpetual market data"
+            );
+        }
+    }
+
+    private static long integralLong(
+        JsonNode parent,
+        String field,
+        String label
+    )
+    {
+        JsonNode value = required(parent, field);
+        if (!value.isIntegralNumber())
+        {
+            throw new IllegalArgumentException(
+                "Binance " + label + " is not an integer"
+            );
+        }
+        return value.longValue();
+    }
+
+    private static long nonNegativeLong(
+        JsonNode parent,
+        String field,
+        String label
+    )
+    {
+        long value = integralLong(parent, field, label);
+        if (value < 0)
+        {
+            throw new IllegalArgumentException(
+                "Binance " + label + " cannot be negative"
+            );
+        }
+        return value;
+    }
+
+    private static Instant epochMillis(
+        JsonNode parent,
+        String field,
+        String label
+    )
+    {
+        long value = integralLong(parent, field, label);
+        if (value <= 0)
+        {
+            throw new IllegalArgumentException(
+                "Binance " + label + " must be positive"
+            );
+        }
+        return Instant.ofEpochMilli(value);
     }
 
     private static JsonNode required(JsonNode parent, String field)

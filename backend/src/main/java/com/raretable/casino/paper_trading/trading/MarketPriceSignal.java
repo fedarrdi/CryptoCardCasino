@@ -4,12 +4,19 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 public record MarketPriceSignal(
+    MarketPriceType type,
     BigDecimal price,
     Instant observedAt
 )
 {
     public MarketPriceSignal
     {
+        if (type == null)
+        {
+            throw new IllegalArgumentException(
+                "Market price type is required"
+            );
+        }
         if (price == null)
         {
             throw new IllegalArgumentException(
@@ -22,5 +29,11 @@ public record MarketPriceSignal(
                 "Market observation time is required"
             );
         }
+    }
+
+    public enum MarketPriceType
+    {
+        LAST,
+        MARK
     }
 }

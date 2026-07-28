@@ -23,6 +23,9 @@ public class JdbcPaperTradingRepository
         side, status,
         leverage, margin_usd, notional_usd, quantity, entry_price,
         exit_price, stop_loss, take_profit, risk_control_version,
+        rule_version_id, funding_eligible_from,
+        entry_fee_rate, exit_fee_rate, entry_fee, exit_fee,
+        liquidation_fee, funding_pnl, gross_realized_pnl,
         realized_pnl, close_reason, opened_at, closed_at
         """;
 
@@ -73,6 +76,90 @@ public class JdbcPaperTradingRepository
             .param("userId", userId)
             .query(JdbcPaperTradingRepository::mapTrade)
             .list();
+    }
+
+    public List<PaperTrade> lockOpenTrades(
+        UUID userId,
+        Instant openedOnOrBefore
+    )
+    {
+        return jdbcClient.sql("""
+                SELECT %s
+                FROM paper_trades
+                WHERE user_id = :userId
+                  AND status = 'OPEN'
+                  AND opened_at <= :openedOnOrBefore
+                ORDER BY opened_at, id
+                FOR UPDATE
+                """.formatted(TRADE_COLUMNS))
+            .param("userId", userId)
+            .param(
+                "openedOnOrBefore",
+                Timestamp.from(openedOnOrBefore)
+            )
+            .query(JdbcPaperTradingRepository::mapTrade)
+            .list();
+    }
+
+    public List<UUID> findUserIdsWithOpenTrades(
+        Instant openedOnOrBefore
+    )
+    {
+        return jdbcClient.sql("""
+                SELECT DISTINCT user_id
+                FROM paper_trades
+                WHERE status = 'OPEN'
+                  AND opened_at <= :openedOnOrBefore
+                ORDER BY user_id
+                """)
+            .param(
+                "openedOnOrBefore",
+                Timestamp.from(openedOnOrBefore)
+            )
+            .query(UUID.class)
+            .list();
+    }
+
+    public List<PaperTrade> lockFundingEligibleTrades(
+        UUID userId,
+        Instant fundingTime
+    )
+    {
+        return jdbcClient.sql("""
+                SELECT %s
+                FROM paper_trades
+                WHERE user_id = :userId
+                  AND funding_eligible_from IS NOT NULL
+                  AND funding_eligible_from <= :fundingTime
+                  AND (closed_at IS NULL OR closed_at > :fundingTime)
+                ORDER BY opened_at, id
+                FOR UPDATE
+                """.formatted(TRADE_COLUMNS))
+            .param("userId", userId)
+            .param("fundingTime", Timestamp.from(fundingTime))
+            .query(JdbcPaperTradingRepository::mapTrade)
+            .list();
+    }
+
+    public void addFundingPnl(
+        UUID tradeId,
+        BigDecimal fundingPnl
+    )
+    {
+        int updated = jdbcClient.sql("""
+                UPDATE paper_trades
+                SET funding_pnl = funding_pnl + :fundingPnl,
+                    realized_pnl = CASE
+                        WHEN status = 'CLOSED'
+                        THEN realized_pnl + :fundingPnl
+                        ELSE realized_pnl
+                    END
+                WHERE id = :tradeId
+                """)
+            .param("tradeId", tradeId)
+            .param("fundingPnl", fundingPnl)
+            .update();
+        requireOneRow(updated, "Paper-trade funding PnL was not updated");
     }
 
     public List<PaperTrade> findClosedTrades(UUID userId, int limit)
@@ -136,6 +223,9 @@ public class JdbcPaperTradingRepository
                 margin_mode, side, status,
                 leverage, margin_usd, notional_usd, quantity, entry_price,
                 exit_price, stop_loss, take_profit, risk_control_version,
+                rule_version_id, funding_eligible_from,
+                entry_fee_rate, exit_fee_rate, entry_fee, exit_fee,
+                liquidation_fee, funding_pnl, gross_realized_pnl,
                 realized_pnl, close_reason, opened_at, closed_at
             )
             VALUES
@@ -144,6 +234,9 @@ public class JdbcPaperTradingRepository
                 :marginMode, :side, :status,
                 :leverage, :marginUsd, :notionalUsd, :quantity, :entryPrice,
                 :exitPrice, :stopLoss, :takeProfit, :riskControlVersion,
+                :ruleVersionId, :fundingEligibleFrom,
+                :entryFeeRate, :exitFeeRate, :entryFee, :exitFee,
+                :liquidationFee, :fundingPnl, :grossRealizedPnl,
                 :realizedPnl, :closeReason, :openedAt, :closedAt
             )
             """, parameters);
@@ -188,7 +281,11 @@ public class JdbcPaperTradingRepository
     public void close(
         UUID tradeId,
         BigDecimal exitPrice,
-        BigDecimal realizedPnl,
+        BigDecimal exitFeeRate,
+        BigDecimal exitFee,
+        BigDecimal liquidationFee,
+        BigDecimal grossRealizedPnl,
+        BigDecimal netRealizedPnl,
         TradeCloseReason closeReason,
         Instant closedAt
     )
@@ -197,18 +294,110 @@ public class JdbcPaperTradingRepository
                 UPDATE paper_trades
                 SET status = 'CLOSED',
                     exit_price = :exitPrice,
-                    realized_pnl = :realizedPnl,
+                    exit_fee_rate = :exitFeeRate,
+                    exit_fee = :exitFee,
+                    liquidation_fee = :liquidationFee,
+                    gross_realized_pnl = :grossRealizedPnl,
+                    realized_pnl = :netRealizedPnl,
                     close_reason = :closeReason,
                     closed_at = :closedAt
                 WHERE id = :tradeId AND status = 'OPEN'
                 """)
             .param("exitPrice", exitPrice)
-            .param("realizedPnl", realizedPnl)
+            .param("exitFeeRate", exitFeeRate)
+            .param("exitFee", exitFee)
+            .param("liquidationFee", liquidationFee)
+            .param("grossRealizedPnl", grossRealizedPnl)
+            .param("netRealizedPnl", netRealizedPnl)
             .param("closeReason", closeReason.name())
             .param("closedAt", Timestamp.from(closedAt))
             .param("tradeId", tradeId)
             .update();
         requireOneRow(updated, "Open paper trade was not closed");
+    }
+
+    public void insertLedgerEntry(
+        UUID id,
+        UUID userId,
+        UUID tradeId,
+        LedgerEventType eventType,
+        BigDecimal amount,
+        BigDecimal balanceAfter,
+        Instant occurredAt,
+        String idempotencyKey
+    )
+    {
+        int inserted = jdbcClient.sql("""
+                INSERT INTO paper_account_ledger
+                (
+                    id, user_id, trade_id, event_type, amount_usd,
+                    balance_after_usd, occurred_at, idempotency_key
+                )
+                VALUES
+                (
+                    :id, :userId, :tradeId, :eventType, :amount,
+                    :balanceAfter, :occurredAt, :idempotencyKey
+                )
+                """)
+            .param("id", id)
+            .param("userId", userId)
+            .param("tradeId", tradeId)
+            .param("eventType", eventType.name())
+            .param("amount", amount)
+            .param("balanceAfter", balanceAfter)
+            .param("occurredAt", Timestamp.from(occurredAt))
+            .param("idempotencyKey", idempotencyKey)
+            .update();
+        requireOneRow(inserted, "Paper-account ledger entry was not created");
+    }
+
+    public void insertLiquidationEvent(
+        UUID id,
+        UUID userId,
+        long ruleVersionId,
+        BigDecimal markPrice,
+        BigDecimal indexPrice,
+        BigDecimal lastPrice,
+        BigDecimal equityBefore,
+        BigDecimal maintenanceMarginBefore,
+        BigDecimal walletAfterCloses,
+        BigDecimal insuranceCredit,
+        Instant triggeredAt,
+        Instant completedAt
+    )
+    {
+        int inserted = jdbcClient.sql("""
+                INSERT INTO paper_liquidation_events
+                (
+                    id, user_id, rule_version_id,
+                    mark_price, index_price, last_price,
+                    equity_before, maintenance_margin_before,
+                    wallet_after_closes, insurance_credit,
+                    triggered_at, completed_at
+                )
+                VALUES
+                (
+                    :id, :userId, :ruleVersionId,
+                    :markPrice, :indexPrice, :lastPrice,
+                    :equityBefore, :maintenanceMarginBefore,
+                    :walletAfterCloses, :insuranceCredit,
+                    :triggeredAt, :completedAt
+                )
+                """)
+            .param("id", id)
+            .param("userId", userId)
+            .param("ruleVersionId", ruleVersionId)
+            .param("markPrice", markPrice)
+            .param("indexPrice", indexPrice)
+            .param("lastPrice", lastPrice)
+            .param("equityBefore", equityBefore)
+            .param("maintenanceMarginBefore", maintenanceMarginBefore)
+            .param("walletAfterCloses", walletAfterCloses)
+            .param("insuranceCredit", insuranceCredit)
+            .param("triggeredAt", Timestamp.from(triggeredAt))
+            .param("completedAt", Timestamp.from(completedAt))
+            .update();
+        requireOneRow(inserted, "Paper-liquidation event was not created");
     }
 
     public List<TriggeredPaperTrade> findTriggeredTrades(
@@ -382,6 +571,15 @@ public class JdbcPaperTradingRepository
             resultSet.getBigDecimal("stop_loss"),
             resultSet.getBigDecimal("take_profit"),
             resultSet.getLong("risk_control_version"),
+            resultSet.getLong("rule_version_id"),
+            timestamp(resultSet, "funding_eligible_from"),
+            resultSet.getBigDecimal("entry_fee_rate"),
+            resultSet.getBigDecimal("exit_fee_rate"),
+            resultSet.getBigDecimal("entry_fee"),
+            resultSet.getBigDecimal("exit_fee"),
+            resultSet.getBigDecimal("liquidation_fee"),
+            resultSet.getBigDecimal("funding_pnl"),
+            resultSet.getBigDecimal("gross_realized_pnl"),
             resultSet.getBigDecimal("realized_pnl"),
             closeReason == null ? null : TradeCloseReason.valueOf(closeReason),
             resultSet.getTimestamp("opened_at").toInstant(),
@@ -406,11 +604,25 @@ public class JdbcPaperTradingRepository
             Map.entry("quantity", trade.quantity()),
             Map.entry("entryPrice", trade.entryPrice()),
             Map.entry("riskControlVersion", trade.riskControlVersion()),
+            Map.entry("ruleVersionId", trade.ruleVersionId()),
+            Map.entry("entryFeeRate", trade.entryFeeRate()),
+            Map.entry("entryFee", trade.entryFee()),
+            Map.entry("exitFee", trade.exitFee()),
+            Map.entry("liquidationFee", trade.liquidationFee()),
+            Map.entry("fundingPnl", trade.fundingPnl()),
             Map.entry("openedAt", Timestamp.from(trade.openedAt()))
         ))
             .addValue("exitPrice", trade.exitPrice())
             .addValue("stopLoss", trade.stopLoss())
             .addValue("takeProfit", trade.takeProfit())
+            .addValue(
+                "fundingEligibleFrom",
+                trade.fundingEligibleFrom() == null
+                    ? null
+                    : Timestamp.from(trade.fundingEligibleFrom())
+            )
+            .addValue("exitFeeRate", trade.exitFeeRate())
+            .addValue("grossRealizedPnl", trade.grossRealizedPnl())
             .addValue("realizedPnl", trade.realizedPnl())
             .addValue(
                 "closeReason",
@@ -422,6 +634,13 @@ public class JdbcPaperTradingRepository
                     ? null
                     : Timestamp.from(trade.closedAt())
             );
+    }
+
+    private static Instant timestamp(ResultSet resultSet, String column)
+        throws SQLException
+    {
+        Timestamp timestamp = resultSet.getTimestamp(column);
+        return timestamp == null ? null : timestamp.toInstant();
     }
 
     private static void requireOneRow(int affectedRows, String message)

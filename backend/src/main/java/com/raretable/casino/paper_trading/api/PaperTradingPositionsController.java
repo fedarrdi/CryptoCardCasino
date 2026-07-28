@@ -68,6 +68,17 @@ public final class PaperTradingPositionsController
         return tradingService.openPosition(userId, request);
     }
 
+    @PostMapping("/positions/preview")
+    public PaperPositionPreviewResponse previewPosition(
+        @Valid @RequestBody PreviewPositionRequest request,
+        @RequestHeader(EXPECTED_USER_HEADER) UUID expectedUserId,
+        @AuthenticationPrincipal WalletPrincipal principal
+    )
+    {
+        UUID userId = requireExpectedUser(principal, expectedUserId);
+        return tradingService.previewPosition(userId, request);
+    }
+
     @PatchMapping("/positions/{positionId}/risk-controls")
     public PaperTradingPortfolioResponse updateRiskControls(
         @PathVariable UUID positionId,

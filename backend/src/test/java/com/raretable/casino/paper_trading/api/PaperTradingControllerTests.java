@@ -101,6 +101,7 @@ class PaperTradingControllerTests
     {
         candleHistory.response = new BtcCandlesResponse(
             "BTCUSDT",
+            "USD_M_PERPETUAL",
             "4h",
             List.of(
                 new BtcCandle(
@@ -131,6 +132,9 @@ class PaperTradingControllerTests
                 .session(authenticatedSession()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.symbol").value("BTCUSDT"))
+            .andExpect(
+                jsonPath("$.productType").value("USD_M_PERPETUAL")
+            )
             .andExpect(jsonPath("$.interval").value("4h"))
             .andExpect(jsonPath("$.hasMore").value(true))
             .andExpect(jsonPath("$.nextBefore").value(1785139200L))
@@ -153,6 +157,7 @@ class PaperTradingControllerTests
     {
         candleHistory.response = new BtcCandlesResponse(
             "BTCUSDT",
+            "USD_M_PERPETUAL",
             "1h",
             List.of(),
             false,

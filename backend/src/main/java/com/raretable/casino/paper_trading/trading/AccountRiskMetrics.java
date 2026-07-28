@@ -1,14 +1,10 @@
-package com.raretable.casino.paper_trading.api;
+package com.raretable.casino.paper_trading.trading;
 
 import java.math.BigDecimal;
 
-import com.raretable.casino.paper_trading.trading.AccountRiskState;
-
-public record TradingAccountResponse(
-    BigDecimal initialBalance,
-    BigDecimal balance,
-    BigDecimal equity,
+public record AccountRiskMetrics(
     BigDecimal grossUnrealizedPnl,
+    BigDecimal equity,
     BigDecimal initialMargin,
     BigDecimal maintenanceMargin,
     BigDecimal estimatedClosingFee,
@@ -16,7 +12,9 @@ public record TradingAccountResponse(
     BigDecimal maintenanceMarginRatioPercent,
     AccountRiskState riskState,
     BigDecimal estimatedLowerLiquidationPrice,
-    BigDecimal estimatedUpperLiquidationPrice
+    BigDecimal estimatedUpperLiquidationPrice,
+    BigDecimal lowerBankruptcyPrice,
+    BigDecimal upperBankruptcyPrice
 )
 {
 }

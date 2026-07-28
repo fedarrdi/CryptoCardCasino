@@ -25,14 +25,14 @@ class BinanceRestKlineClientTests
     void requestsTheSelectedIntervalAndMapsPositionalKlines()
     {
         RestClient.Builder builder = RestClient.builder()
-            .baseUrl("https://api.binance.com");
+            .baseUrl("https://fapi.binance.com");
         MockRestServiceServer binance = MockRestServiceServer
             .bindTo(builder)
             .build();
         binance.expect(
                 once(),
                 requestTo(
-                    "https://api.binance.com/api/v3/klines"
+                    "https://fapi.binance.com/fapi/v1/klines"
                         + "?symbol=BTCUSDT"
                         + "&interval=1M"
                         + "&startTime=1785139200000"

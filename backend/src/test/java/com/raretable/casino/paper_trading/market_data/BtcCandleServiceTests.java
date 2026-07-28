@@ -395,12 +395,16 @@ class BtcCandleServiceTests
     {
         MarketDataProperties properties = new MarketDataProperties(
             true,
-            URI.create("https://api.binance.com"),
+            URI.create("https://fapi.binance.com"),
             URI.create(
-                "wss://stream.binance.com:9443/ws/btcusdt@kline_1h"
+                "wss://fstream.binance.com/market/ws/btcusdt@kline_1h"
+            ),
+            URI.create(
+                "wss://fstream.binance.com/public/ws/btcusdt@bookTicker"
             ),
             initialOpenTime,
             Duration.ofMinutes(1),
+            Duration.ofSeconds(5),
             Duration.ofSeconds(5),
             historyLimit
         );
@@ -517,6 +521,7 @@ class BtcCandleServiceTests
     {
         return new LiveBtcCandle(
             "BTCUSDT",
+            "USD_M_PERPETUAL",
             interval.value(),
             kline.openTime().getEpochSecond(),
             kline.open(),

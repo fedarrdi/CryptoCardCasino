@@ -36,6 +36,7 @@ export type BtcCandleInterval = (typeof BTC_CANDLE_INTERVALS)[number]
 
 export type BtcCandleHistory = {
   symbol: 'BTCUSDT'
+  productType: 'USD_M_PERPETUAL'
   interval: BtcCandleInterval
   candles: MarketCandle[]
   hasMore: boolean
@@ -44,6 +45,7 @@ export type BtcCandleHistory = {
 
 export type BtcCandleUpdate = MarketCandle & {
   symbol: 'BTCUSDT'
+  productType: 'USD_M_PERPETUAL'
   interval: BtcCandleInterval
   closed: boolean
 }
@@ -52,17 +54,32 @@ export type PositionSide = 'LONG' | 'SHORT'
 
 export type PaperTradingQuote = {
   symbol: string
+  productType: 'USD_M_PERPETUAL'
   bidPrice: number
   askPrice: number
+  lastPrice: number
+  markPrice: number
+  indexPrice: number
+  fundingRate: number
+  nextFundingAt: string
+  bookUpdatedAt: string
+  lastPriceUpdatedAt: string
+  markPriceUpdatedAt: string
 }
 
 export type PaperTradingAccount = {
   initialBalance: number
   balance: number
   equity: number
-  unrealizedPnl: number
-  usedMargin: number
+  grossUnrealizedPnl: number
+  initialMargin: number
+  maintenanceMargin: number
+  estimatedClosingFee: number
   availableMargin: number
+  maintenanceMarginRatioPercent: number | null
+  riskState: string
+  estimatedLowerLiquidationPrice: number | null
+  estimatedUpperLiquidationPrice: number | null
 }
 
 type PaperPositionFields = {
@@ -87,6 +104,19 @@ export type OpenPaperPosition = PaperPositionFields & {
   status: 'OPEN'
   unrealizedPnl: number
   unrealizedRoePercent: number
+  grossUnrealizedPnl: number
+  estimatedNetPnl: number
+  entryFee: number
+  estimatedExitFee: number
+  fundingPnl: number
+  breakEvenPrice: number
+  bankruptcyPrice: number | null
+  estimatedLiquidationPrice: number | null
+  maintenanceMargin: number
+  maintenanceMarginRate: number
+  estimatedClosePrice: number
+  estimatedCloseGrossPnl: number
+  estimatedCloseNetPnl: number
   exitPrice: null
   realizedPnl: null
   closedAt: null
@@ -99,8 +129,13 @@ export type ClosedPaperTrade = PaperPositionFields & {
   unrealizedRoePercent: null
   exitPrice: number
   realizedPnl: number
+  grossRealizedPnl: number
+  entryFee: number
+  exitFee: number
+  fundingPnl: number
+  liquidationFee: number
   closedAt: string
-  closeReason: 'USER' | 'STOP_LOSS' | 'TAKE_PROFIT'
+  closeReason: 'USER' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'LIQUIDATION'
 }
 
 export type PaperPosition = OpenPaperPosition | ClosedPaperTrade
@@ -120,6 +155,38 @@ export type OpenPaperPositionRequest = {
   marginUsd: number
   stopLoss: number | null
   takeProfit: number | null
+}
+
+export type PreviewPaperPositionRequest = Omit<
+  OpenPaperPositionRequest,
+  'clientOrderId'
+>
+
+export type PaperPositionPreview = {
+  entryPrice: number
+  notionalUsd: number
+  quantity: number
+  entryFee: number
+  estimatedExitFee: number
+  breakEvenPrice: number
+  bankruptcyPrice: number | null
+  estimatedLiquidationPrice: number | null
+  lowerBankruptcyPrice: number | null
+  upperBankruptcyPrice: number | null
+  estimatedLowerLiquidationPrice: number | null
+  estimatedUpperLiquidationPrice: number | null
+  maintenanceMargin: number
+  maintenanceMarginRate: number
+  postOrderMaintenanceMarginRatioPercent: number
+  availableMarginAfter: number
+  maxOrderMargin: number
+  takerFeeRate: number
+  liquidationFeeRate: number
+  liquidationMode: 'FULL'
+  negativeBalancePolicy: 'FLOOR_ZERO'
+  stopTriggerPriceType: 'LAST'
+  ruleVersion: string
+  pricingAt: string
 }
 
 export type UpdateRiskControlsRequest = {
@@ -355,6 +422,23 @@ export function openPaperPosition(
 ): Promise<PaperTradingPortfolio> {
   return authenticatedMutationJson<PaperTradingPortfolio>(
     '/api/paper-trading/positions',
+    expectedUserId,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(position),
+      signal,
+    },
+  )
+}
+
+export function previewPaperPosition(
+  position: PreviewPaperPositionRequest,
+  expectedUserId: string,
+  signal?: AbortSignal,
+): Promise<PaperPositionPreview> {
+  return authenticatedMutationJson<PaperPositionPreview>(
+    '/api/paper-trading/positions/preview',
     expectedUserId,
     {
       method: 'POST',

@@ -4,5 +4,6 @@ public enum TradeCloseReason
 {
     USER,
     STOP_LOSS,
-    TAKE_PROFIT
+    TAKE_PROFIT,
+    LIQUIDATION
 }
