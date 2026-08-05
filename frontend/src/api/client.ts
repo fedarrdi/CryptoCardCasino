@@ -96,20 +96,3 @@ export async function apiRequestWithoutResponse(
 ): Promise<void> {
   await request(path, init, options)
 }
-
-export function isGameWaitingError(error: unknown): boolean {
-  return (
-    error instanceof ApiRequestError &&
-    error.status === 409 &&
-    error.code === 'INVALID_GAME_STATE' &&
-    error.message === 'Game has not started'
-  )
-}
-
-export function isTableNotFoundError(error: unknown): boolean {
-  return (
-    error instanceof ApiRequestError &&
-    error.status === 404 &&
-    error.code === 'NOT_FOUND'
-  )
-}

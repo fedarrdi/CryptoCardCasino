@@ -1,10 +1,14 @@
-# CryptoCardCasino
+# CryptoCardCasino authentication branch
 
-React frontend lives in `frontend/`.
+This branch isolates the hardened backend authentication/security
+implementation and a MetaMask-only React frontend. The frontend contains no
+game or lobby experience: it can connect MetaMask, establish or restore a
+wallet-backed session, show the authenticated identity, and sign out.
 
 ## Frontend
 
-This project uses Vite + React + TypeScript.
+The frontend uses Vite, React, and TypeScript. MetaMask is the only supported
+authentication provider.
 
 ```bash
 cd frontend

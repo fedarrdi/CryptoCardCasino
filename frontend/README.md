@@ -1,36 +1,41 @@
-# Frontend
+# MetaMask authentication frontend
 
-React client for RareTable.
+This frontend contains only the RareTable authentication experience. MetaMask
+is the sole supported login method; there are no game, lobby, password, email,
+social-login, or alternative-wallet screens in this application.
 
-## Stack
+The login flow is:
 
-- Vite
-- React
-- TypeScript
+1. Request the selected MetaMask account and chain ID.
+2. Request a short-lived SIWE challenge from the backend.
+3. Ask MetaMask to sign the challenge.
+4. Exchange the signature for an HTTP session and CSRF credentials.
 
 ## Run locally
 
-Start the backend with its local HTTP profile:
+Start PostgreSQL and Redis from the repository root, then run the backend with
+its development profile:
 
 ```bash
-cd ../backend
+docker compose up -d postgres redis
+cd backend
 SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 ```
 
-Then start the frontend on `http://localhost:5173`:
+In another terminal, start the frontend on `http://localhost:5173`:
 
 ```bash
+cd frontend
 npm install
 npm run dev
 ```
 
-MetaMask is required to authenticate. The current backend accepts externally
-owned accounts (EOAs); ERC-1271 contract wallets are not supported yet.
+MetaMask must be installed in the browser. The backend currently accepts
+externally owned accounts; ERC-1271 contract wallets are not supported.
 
-## Build
+## Checks
 
 ```bash
+npm run lint
 npm run build
 ```
-
-The main app entry is `src/App.tsx`.

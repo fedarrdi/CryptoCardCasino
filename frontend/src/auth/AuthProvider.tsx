@@ -14,6 +14,7 @@ import {
   type AuthenticatedUser,
 } from '../api/auth.ts'
 import {
+  ApiRequestError,
   clearCsrfCredentials,
   setAuthenticationRequiredHandler,
   setCsrfCredentials,
@@ -24,10 +25,12 @@ import { connectMetaMask, signMetaMaskMessage } from './metamask.ts'
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null)
   const [status, setStatus] = useState<AuthStatus>('checking')
+  const [sessionError, setSessionError] = useState<Error | null>(null)
 
   const clearAuthentication = useCallback(() => {
     clearCsrfCredentials()
     setUser(null)
+    setSessionError(null)
     setStatus('unauthenticated')
   }, [])
 
@@ -36,29 +39,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setAuthenticationRequiredHandler(null)
   }, [clearAuthentication])
 
+  const restoreSession = useCallback(async (signal?: AbortSignal) => {
+    setSessionError(null)
+    setStatus('checking')
+
+    try {
+      const authenticatedUser = await getAuthenticatedUser(signal)
+      const csrfCredentials = await getCsrfCredentials(signal)
+
+      if (signal?.aborted !== true) {
+        setCsrfCredentials(csrfCredentials)
+        setUser(authenticatedUser)
+        setStatus('authenticated')
+      }
+    } catch (restoreError) {
+      if (signal?.aborted === true) {
+        return
+      }
+
+      if (restoreError instanceof ApiRequestError && restoreError.status === 401) {
+        clearAuthentication()
+        return
+      }
+
+      if (!(restoreError instanceof Error)) {
+        throw restoreError
+      }
+
+      clearCsrfCredentials()
+      setUser(null)
+      setSessionError(restoreError)
+      setStatus('error')
+    }
+  }, [clearAuthentication])
+
   useEffect(() => {
     const abortController = new AbortController()
 
-    async function restoreSession() {
-      try {
-        const authenticatedUser = await getAuthenticatedUser(abortController.signal)
-        const csrfCredentials = await getCsrfCredentials(abortController.signal)
-
-        if (!abortController.signal.aborted) {
-          setCsrfCredentials(csrfCredentials)
-          setUser(authenticatedUser)
-          setStatus('authenticated')
-        }
-      } catch {
-        if (!abortController.signal.aborted) {
-          clearAuthentication()
-        }
-      }
-    }
-
-    void restoreSession()
+    void restoreSession(abortController.signal)
     return () => abortController.abort()
-  }, [clearAuthentication])
+  }, [restoreSession])
 
   const connectWallet = useCallback(async () => {
     const wallet = await connectMetaMask()
@@ -72,9 +92,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const csrfCredentials = await getCsrfCredentials()
 
     setCsrfCredentials(csrfCredentials)
+    setSessionError(null)
     setUser(authenticatedUser)
     setStatus('authenticated')
   }, [])
+
+  const retrySession = useCallback(async () => {
+    await restoreSession()
+  }, [restoreSession])
 
   const signOut = useCallback(async () => {
     await deleteAuthenticatedSession()
@@ -82,8 +107,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearAuthentication])
 
   const contextValue = useMemo(
-    () => ({ user, status, connectWallet, signOut }),
-    [connectWallet, signOut, status, user],
+    () => ({ user, status, sessionError, connectWallet, retrySession, signOut }),
+    [connectWallet, retrySession, sessionError, signOut, status, user],
   )
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
