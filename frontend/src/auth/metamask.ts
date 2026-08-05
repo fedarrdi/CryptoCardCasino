@@ -3,7 +3,7 @@ type ProviderRequest = {
   params?: unknown[]
 }
 
-export type MetaMaskProvider = {
+type MetaMaskProvider = {
   isMetaMask?: boolean
   request: (request: ProviderRequest) => Promise<unknown>
 }
@@ -12,37 +12,13 @@ type BrowserWindow = Window & {
   ethereum?: MetaMaskProvider
 }
 
-export type ConnectedWallet = {
+type ConnectedWallet = {
   provider: MetaMaskProvider
   walletAddress: string
   chainId: number
 }
 
-async function requestProvider(
-  provider: MetaMaskProvider,
-  request: ProviderRequest,
-): Promise<unknown> {
-  try {
-    return await provider.request(request)
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error
-    }
-
-    if (
-      typeof error === 'object' &&
-      error !== null &&
-      'message' in error &&
-      typeof error.message === 'string'
-    ) {
-      throw new Error(error.message)
-    }
-
-    throw new Error('MetaMask returned an invalid error response')
-  }
-}
-
-export function getMetaMaskProvider(): MetaMaskProvider {
+function getMetaMaskProvider(): MetaMaskProvider {
   const provider = (window as BrowserWindow).ethereum
 
   if (provider === undefined || provider.isMetaMask !== true) {
@@ -54,7 +30,7 @@ export function getMetaMaskProvider(): MetaMaskProvider {
 
 export async function connectMetaMask(): Promise<ConnectedWallet> {
   const provider = getMetaMaskProvider()
-  const accounts = await requestProvider(provider, { method: 'eth_requestAccounts' })
+  const accounts = await provider.request({ method: 'eth_requestAccounts' })
 
   if (
     !Array.isArray(accounts) ||
@@ -65,7 +41,7 @@ export async function connectMetaMask(): Promise<ConnectedWallet> {
     throw new Error('MetaMask did not return a wallet account')
   }
 
-  const chainIdHex = await requestProvider(provider, { method: 'eth_chainId' })
+  const chainIdHex = await provider.request({ method: 'eth_chainId' })
 
   if (typeof chainIdHex !== 'string' || !/^0x[0-9a-f]+$/i.test(chainIdHex)) {
     throw new Error('MetaMask returned an invalid chain ID')
@@ -94,7 +70,7 @@ export async function signMetaMaskMessage(
     (byte) => byte.toString(16).padStart(2, '0'),
   ).join('')}`
 
-  const signature = await requestProvider(provider, {
+  const signature = await provider.request({
     method: 'personal_sign',
     params: [encodedMessage, walletAddress],
   })

@@ -1,158 +1,170 @@
-import { useState } from 'react'
-import { AuthProvider } from './auth/AuthProvider.tsx'
-import { useAuth } from './auth/AuthContext.ts'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  ApiRequestError,
+  clearCsrfCredentials,
+  createAuthenticatedSession,
+  createLoginChallenge,
+  deleteAuthenticatedSession,
+  getAuthenticatedUser,
+  initializeCsrf,
+  type AuthenticatedUser,
+} from './api/auth.ts'
+import { connectMetaMask, signMetaMaskMessage } from './auth/metamask.ts'
 
-function AuthenticationScreen() {
-  const { user, status, sessionError, connectWallet, retrySession, signOut } = useAuth()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+type ScreenState =
+  | { kind: 'checking' }
+  | { kind: 'signedOut'; error: string | null }
+  | { kind: 'signedIn'; user: AuthenticatedUser; error: string | null }
+  | { kind: 'sessionError'; error: string }
 
-  async function handleConnect() {
-    setError(null)
-    setIsSubmitting(true)
-
-    try {
-      await connectWallet()
-    } catch (connectionError) {
-      if (!(connectionError instanceof Error)) {
-        throw connectionError
-      }
-
-      setError(connectionError.message)
-    } finally {
-      setIsSubmitting(false)
-    }
+function requireError(error: unknown): Error {
+  if (!(error instanceof Error)) {
+    throw error
   }
 
-  async function handleSignOut() {
-    setError(null)
-    setIsSubmitting(true)
-
-    try {
-      await signOut()
-    } catch (signOutError) {
-      if (!(signOutError instanceof Error)) {
-        throw signOutError
-      }
-
-      setError(signOutError.message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  async function handleRetrySession() {
-    setError(null)
-    setIsSubmitting(true)
-
-    try {
-      await retrySession()
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  let authenticationPanel
-
-  if (status === 'checking') {
-    authenticationPanel = (
-      <div className="session-status" role="status">
-        <span className="spinner" aria-hidden="true" />
-        <span>Checking your session</span>
-      </div>
-    )
-  } else if (status === 'authenticated') {
-    if (user === null) {
-      throw new Error('An authenticated session must include a user')
-    }
-
-    authenticationPanel = (
-      <div className="authenticated-panel" role="status">
-        <span className="status-badge">
-          <span className="status-dot" aria-hidden="true" />
-          Authenticated
-        </span>
-        <div className="wallet-identity">
-          <span>Signed in as</span>
-          <strong>{user.name}</strong>
-          <code>{user.walletAddress}</code>
-        </div>
-        <button
-          className="secondary-button"
-          type="button"
-          aria-busy={isSubmitting}
-          disabled={isSubmitting}
-          onClick={() => void handleSignOut()}
-        >
-          {isSubmitting ? 'Signing out...' : 'Sign out'}
-        </button>
-      </div>
-    )
-  } else if (status === 'unauthenticated') {
-    authenticationPanel = (
-      <div className="connect-panel">
-        <button
-          className="metamask-button"
-          type="button"
-          aria-busy={isSubmitting}
-          disabled={isSubmitting}
-          onClick={() => void handleConnect()}
-        >
-          <span className="wallet-symbol" aria-hidden="true">M</span>
-          {isSubmitting ? 'Waiting for MetaMask...' : 'Continue with MetaMask'}
-        </button>
-        <p>You will be asked to sign a message. This does not create a blockchain transaction.</p>
-      </div>
-    )
-  } else {
-    if (sessionError === null) {
-      throw new Error('An authentication error state must include an error')
-    }
-
-    authenticationPanel = (
-      <div className="session-error" role="alert">
-        <strong>Could not verify your session</strong>
-        <span>{sessionError.message}</span>
-        <button
-          className="secondary-button"
-          type="button"
-          aria-busy={isSubmitting}
-          disabled={isSubmitting}
-          onClick={() => void handleRetrySession()}
-        >
-          {isSubmitting ? 'Checking session...' : 'Retry'}
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <main className="authentication-page">
-      <section className="authentication-card" aria-labelledby="authentication-title">
-        <div className="brand-mark" aria-hidden="true">R</div>
-        <p className="eyebrow">RareTable access</p>
-        <h1 id="authentication-title">Authenticate with your wallet</h1>
-        <p className="introduction">
-          MetaMask is the only supported authentication method.
-        </p>
-
-        {authenticationPanel}
-        {error && <p className="error-message" role="alert">{error}</p>}
-
-        <div className="security-note">
-          <span aria-hidden="true">&#10003;</span>
-          Your private keys never leave MetaMask.
-        </div>
-      </section>
-    </main>
-  )
+  return error
 }
 
 function App() {
+  const [state, setState] = useState<ScreenState>({ kind: 'checking' })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const checkSession = useCallback(async (signal?: AbortSignal) => {
+    setState({ kind: 'checking' })
+
+    try {
+      const user = await getAuthenticatedUser(signal)
+      await initializeCsrf(signal)
+
+      if (signal?.aborted !== true) {
+        setState({ kind: 'signedIn', user, error: null })
+      }
+    } catch (error) {
+      if (signal?.aborted === true) {
+        return
+      }
+
+      if (error instanceof ApiRequestError && error.status === 401) {
+        clearCsrfCredentials()
+        setState({ kind: 'signedOut', error: null })
+        return
+      }
+
+      clearCsrfCredentials()
+      setState({ kind: 'sessionError', error: requireError(error).message })
+    }
+  }, [])
+
+  useEffect(() => {
+    const abortController = new AbortController()
+
+    void checkSession(abortController.signal)
+    return () => abortController.abort()
+  }, [checkSession])
+
+  async function authenticate() {
+    setIsSubmitting(true)
+    setState({ kind: 'signedOut', error: null })
+    let sessionExchangeStarted = false
+
+    try {
+      const wallet = await connectMetaMask()
+      const challenge = await createLoginChallenge(wallet.walletAddress, wallet.chainId)
+      const signature = await signMetaMaskMessage(
+        wallet.provider,
+        wallet.walletAddress,
+        challenge.message,
+      )
+      sessionExchangeStarted = true
+      const user = await createAuthenticatedSession(challenge.nonce, signature)
+      await initializeCsrf()
+      setState({ kind: 'signedIn', user, error: null })
+    } catch (error) {
+      const message = requireError(error).message
+
+      if (error instanceof ApiRequestError && error.status === 401) {
+        clearCsrfCredentials()
+        setState({ kind: 'signedOut', error: message })
+      } else if (sessionExchangeStarted) {
+        clearCsrfCredentials()
+        setState({ kind: 'sessionError', error: message })
+      } else {
+        setState({ kind: 'signedOut', error: message })
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function signOut(user: AuthenticatedUser) {
+    setIsSubmitting(true)
+    setState({ kind: 'signedIn', user, error: null })
+
+    try {
+      await deleteAuthenticatedSession()
+      setState({ kind: 'signedOut', error: null })
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        clearCsrfCredentials()
+        setState({ kind: 'signedOut', error: null })
+      } else {
+        setState({ kind: 'signedIn', user, error: requireError(error).message })
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   return (
-    <AuthProvider>
-      <AuthenticationScreen />
-    </AuthProvider>
+    <main>
+      <h1>Wallet authentication</h1>
+
+      {state.kind === 'checking' && <p role="status">Checking session...</p>}
+
+      {state.kind === 'signedOut' && (
+        <section>
+          <button
+            type="button"
+            aria-busy={isSubmitting}
+            disabled={isSubmitting}
+            onClick={() => void authenticate()}
+          >
+            {isSubmitting ? 'Waiting for MetaMask...' : 'Authenticate with MetaMask'}
+          </button>
+          {state.error && <p className="error" role="alert">{state.error}</p>}
+        </section>
+      )}
+
+      {state.kind === 'signedIn' && (
+        <section aria-live="polite">
+          <p>Authenticated wallet:</p>
+          <code>{state.user.walletAddress}</code>
+          <button
+            type="button"
+            aria-busy={isSubmitting}
+            disabled={isSubmitting}
+            onClick={() => void signOut(state.user)}
+          >
+            {isSubmitting ? 'Signing out...' : 'Sign out'}
+          </button>
+          {state.error && <p className="error" role="alert">{state.error}</p>}
+        </section>
+      )}
+
+      {state.kind === 'sessionError' && (
+        <section>
+          <p className="error" role="alert">{state.error}</p>
+          <button
+            type="button"
+            aria-busy={isSubmitting}
+            disabled={isSubmitting}
+            onClick={() => void checkSession()}
+          >
+            Retry
+          </button>
+        </section>
+      )}
+    </main>
   )
 }
 
